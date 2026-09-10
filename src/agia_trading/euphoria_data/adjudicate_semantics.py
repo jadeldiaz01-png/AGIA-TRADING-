@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -56,9 +57,7 @@ def _split_types(signature: str) -> list[str]:
 def _is_dynamic(abi_type: str) -> bool:
     if abi_type in {"bytes", "string"}:
         return True
-    if abi_type.endswith("[]"):
-        return True
-    return False
+    return abi_type.endswith("[]")
 
 
 def signature_shape_compatible(signature: str, calldata_hex: str) -> bool:
@@ -93,9 +92,15 @@ def fourbyte_lookup(identifier: str, kind: str) -> list[str]:
     query = urllib.parse.urlencode({"hex_signature": identifier})
     try:
         payload = _get_json(f"https://www.4byte.directory/api/v1/{resource}/?{query}")
-    except Exception:  # External corroborator is non-authoritative and optional.
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
         return []
-    return sorted({entry["text_signature"] for entry in payload.get("results", []) if entry.get("text_signature")})
+    return sorted(
+        {
+            entry["text_signature"]
+            for entry in payload.get("results", [])
+            if entry.get("text_signature")
+        }
+    )
 
 
 def discover_samples(rpc: RpcClient, max_blocks: int = 1000) -> dict[str, list[dict]]:
@@ -145,7 +150,10 @@ def adjudicate(endpoint: str = RPC) -> dict:
         compatible = [
             signature
             for signature in intersection
-            if all(signature_shape_compatible(signature, sample["calldata"]) for sample in samples[selector])
+            if all(
+                signature_shape_compatible(signature, sample["calldata"])
+                for sample in samples[selector]
+            )
         ]
         if len(compatible) == 1:
             status = "CORROBORATED_SIGNATURE_CANDIDATE"
@@ -167,7 +175,12 @@ def adjudicate(endpoint: str = RPC) -> dict:
         openchain = openchain_lookup(topic, "event")
         fourbyte = fourbyte_lookup(topic, "event")
         intersection = sorted(set(openchain) & set(fourbyte))
-        status = "CORROBORATED_SIGNATURE_CANDIDATE" if len(intersection) == 1 else ("COLLISION" if len(intersection) > 1 else "UNKNOWN")
+        if len(intersection) == 1:
+            status = "CORROBORATED_SIGNATURE_CANDIDATE"
+        elif len(intersection) > 1:
+            status = "COLLISION"
+        else:
+            status = "UNKNOWN"
         events[topic] = {
             "status": status,
             "openchain_candidates": openchain,
@@ -182,7 +195,10 @@ def adjudicate(endpoint: str = RPC) -> dict:
         "source_endpoint": endpoint,
         "functions": functions,
         "events": events,
-        "rule": "Signature databases are candidate evidence only. VERIFIED requires independent protocol/source or deterministic behavioral/accounting proof.",
+        "rule": (
+            "Signature databases are candidate evidence only. VERIFIED requires "
+            "independent protocol/source or deterministic behavioral/accounting proof."
+        ),
         "oracle_dependency_verified": False,
         "settlement_semantics_verified": False,
         "fee_payout_semantics_verified": False,
@@ -199,7 +215,10 @@ def main() -> None:
     args = parser.parse_args()
     result = adjudicate(args.rpc)
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    args.out.write_text(
+        json.dumps(result, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     print(json.dumps(result, sort_keys=True))
 
 
