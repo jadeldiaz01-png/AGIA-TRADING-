@@ -13,6 +13,7 @@ READ_ONLY_METHODS = {
     "eth_getTransactionReceipt",
     "eth_getLogs",
     "eth_getCode",
+    "eth_getStorageAt",
     "eth_call",
 }
 
