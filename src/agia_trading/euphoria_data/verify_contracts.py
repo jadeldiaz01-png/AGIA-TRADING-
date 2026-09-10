@@ -39,6 +39,59 @@ def push4_candidates(bytecode: str) -> list[str]:
     return sorted(out)
 
 
+def _upgrade_log_query(rpc: RpcClient, start: int, end: int) -> list[dict]:
+    return rpc.call(
+        "eth_getLogs",
+        [
+            {
+                "address": PROXY,
+                "fromBlock": hex(start),
+                "toBlock": hex(end),
+                "topics": [UPGRADED_TOPIC0],
+            }
+        ],
+    )
+
+
+def scan_upgrade_history(
+    rpc: RpcClient,
+    latest_block: int,
+    initial_chunk: int = 1_000_000,
+    min_chunk: int = 10_000,
+) -> list[dict]:
+    logs: list[dict] = []
+
+    def scan(start: int, end: int) -> None:
+        try:
+            logs.extend(_upgrade_log_query(rpc, start, end))
+        except Exception:
+            size = end - start + 1
+            if size <= min_chunk:
+                raise
+            midpoint = start + size // 2 - 1
+            scan(start, midpoint)
+            scan(midpoint + 1, end)
+
+    for start in range(0, latest_block + 1, initial_chunk):
+        scan(start, min(start + initial_chunk - 1, latest_block))
+
+    history = []
+    for log in sorted(logs, key=lambda item: (int(item["blockNumber"], 16), int(item["logIndex"], 16))):
+        topics = log.get("topics", [])
+        if len(topics) < 2:
+            raise RuntimeError("Upgraded log missing indexed implementation topic")
+        implementation = "0x" + topics[1][-40:].lower()
+        history.append(
+            {
+                "block_number": int(log["blockNumber"], 16),
+                "transaction_hash": log["transactionHash"].lower(),
+                "log_index": int(log["logIndex"], 16),
+                "implementation": implementation,
+            }
+        )
+    return history
+
+
 def collect_from_endpoint(endpoint: str) -> dict:
     rpc = RpcClient(endpoint)
     rpc.verify_chain_id(4326)
@@ -53,10 +106,15 @@ def collect_from_endpoint(endpoint: str) -> dict:
         raise RuntimeError("proxy or implementation runtime bytecode is empty")
 
     latest_block = int(rpc.call("eth_blockNumber", []), 16)
+    upgrade_history = scan_upgrade_history(rpc, latest_block)
+    if upgrade_history and upgrade_history[-1]["implementation"] != observed_implementation:
+        raise RuntimeError("latest Upgraded event disagrees with current ERC1967 implementation slot")
+
     return {
         "gate": "P0-EUPHORIA-CONTRACTS-001",
         "source_endpoint": endpoint,
         "chain_id": 4326,
+        "scan_start_block": 0,
         "latest_block": latest_block,
         "proxy": PROXY,
         "proxy_standard": "ERC1967",
@@ -69,7 +127,8 @@ def collect_from_endpoint(endpoint: str) -> dict:
         "implementation_runtime_bytecode_sha256": runtime_bytecode_sha256(implementation_code),
         "implementation_push4_candidates": push4_candidates(implementation_code),
         "known_erc1967_upgraded_topic0": UPGRADED_TOPIC0,
-        "upgrade_history_complete": False,
+        "upgrade_history": upgrade_history,
+        "upgrade_history_complete": True,
         "abi_verified": False,
         "event_semantics_verified": False,
         "oracle_dependency_verified": False,
