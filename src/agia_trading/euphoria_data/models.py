@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -32,7 +32,7 @@ class RawChainRecord(BaseModel):
     topics: list[str] = Field(default_factory=list)
     data: str | None = None
     source_endpoint: str
-    retrieved_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    retrieved_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     extractor_git_sha: str
     schema_version: str = "1.0.0"
 
