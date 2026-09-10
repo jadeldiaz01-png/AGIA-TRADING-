@@ -9,6 +9,7 @@ READ_ONLY_METHODS = {
     "eth_chainId",
     "eth_blockNumber",
     "eth_getBlockByNumber",
+    "eth_getTransactionByHash",
     "eth_getTransactionReceipt",
     "eth_getLogs",
     "eth_getCode",
