@@ -5,7 +5,6 @@ import json
 import typing
 import urllib.request
 
-
 READ_ONLY_METHODS = {
     "eth_chainId",
     "eth_blockNumber",
