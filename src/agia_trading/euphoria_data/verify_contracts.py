@@ -20,6 +20,7 @@ DEFAULT_RPCS = [
     "https://public.1rpc.io/megaeth",
 ]
 UPGRADED_TOPIC0 = "0xbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b"
+EXPECTED_RPC_ERRORS = (OSError, ValueError, RuntimeError)
 
 
 def push4_candidates(bytecode: str) -> list[str]:
@@ -64,7 +65,7 @@ def scan_upgrade_history(
     def scan(start: int, end: int) -> None:
         try:
             logs.extend(_upgrade_log_query(rpc, start, end))
-        except Exception:
+        except EXPECTED_RPC_ERRORS:
             size = end - start + 1
             if size <= min_chunk:
                 raise
@@ -147,7 +148,7 @@ def collect(endpoints: list[str]) -> dict:
             evidence = collect_from_endpoint(endpoint)
             evidence["rpc_failures_before_success"] = failures
             return evidence
-        except Exception as exc:  # failover provenance, not silent suppression
+        except EXPECTED_RPC_ERRORS as exc:
             failures.append({"endpoint": endpoint, "error": f"{type(exc).__name__}: {exc}"})
     raise RuntimeError(f"all MegaETH RPC endpoints failed: {failures}")
 
