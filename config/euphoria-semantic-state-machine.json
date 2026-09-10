@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0.0",
+  "gate": "P0-EUPHORIA-SEMANTIC-ADJUDICATION-001",
+  "asset": {
+    "symbol": "USDm",
+    "address": "0xfafddbb3fc7688494971a79cc65dca3ef82079e7",
+    "evidence_status": "VERIFIED_OBSERVED_IN_RECEIPTS"
+  },
+  "oracle": {
+    "provider": "RedStone Bolt",
+    "documented_feed_labels": ["ETH", "ETH_HIGH", "ETH_LOW"],
+    "direct_onchain_dependency_verified": false
+  },
+  "functions": {
+    "0x21d5c9bb": {
+      "runtime_presence_verified": true,
+      "calldata_and_receipt_observed": true,
+      "semantic_label": null,
+      "semantic_status": "UNKNOWN"
+    },
+    "0x93ca625d": {
+      "runtime_presence_verified": true,
+      "calldata_and_receipt_observed": true,
+      "semantic_label": null,
+      "semantic_status": "UNKNOWN"
+    }
+  },
+  "lifecycle": {
+    "funds_in": "PARTIAL_EVIDENCE",
+    "market_or_position_creation": "UNKNOWN",
+    "oracle_snapshot": "PARTIAL_EVIDENCE",
+    "resolution": "UNKNOWN",
+    "gross_payout": "PARTIAL_EVIDENCE",
+    "fee": "UNKNOWN",
+    "net_payout": "UNKNOWN",
+    "accounting_identity": "UNVERIFIED"
+  },
+  "certification": {
+    "selector_semantics_verified": false,
+    "event_semantics_verified": false,
+    "oracle_dependency_verified": false,
+    "settlement_semantics_verified": false,
+    "fee_payout_semantics_verified": false,
+    "backfill_authorized": false,
+    "live_authorized": false,
+    "max_autonomous_capital_usd": 0
+  }
+}
