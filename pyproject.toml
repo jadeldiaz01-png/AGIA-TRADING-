@@ -12,7 +12,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.3,<9", "ruff>=0.9,<1"]
+dev = [
+  "eth-hash[pycryptodome]>=0.7,<1",
+  "pytest>=8.3,<9",
+  "ruff>=0.9,<1",
+]
 
 [project.scripts]
 euphoria-certify = "agia_trading.euphoria_data.certifier:main"

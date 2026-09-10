@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 jobs:
-  adjudicate:
+  adjudication-evidence:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -17,22 +17,25 @@ jobs:
           python-version: '3.12'
       - name: Install project
         run: pip install -e '.[dev]'
-      - name: Collect signature and semantic evidence
+      - name: Unit tests for adjudicator
+        run: pytest -q tests/test_adjudicate_semantics.py
+      - name: Collect selector/event adjudication evidence
         run: |
           python -m agia_trading.euphoria_data.adjudicate_semantics \
             --out evidence/p0-euphoria-semantic-adjudication-001.json
-      - name: Prove financial execution remains disabled
+      - name: Prove fail-closed authorization boundary
         run: |
           python - <<'PY'
           import json
           p=json.load(open('evidence/p0-euphoria-semantic-adjudication-001.json'))
+          assert p['backfill_authorized'] is False
           assert p['live_authorized'] is False
           assert p['max_autonomous_capital_usd'] == 0
-          assert p['selector_semantics_verified'] is False
-          assert p['event_semantics_verified'] is False
+          assert all(not x['semantic_verified'] for x in p['functions'].values())
+          assert all(not x['economic_role_verified'] for x in p['events'].values())
           PY
       - uses: actions/upload-artifact@v4
         with:
           name: p0-euphoria-semantic-adjudication-001-evidence
           path: evidence/p0-euphoria-semantic-adjudication-001.json
-          if-no-files-found: error
+          retention-days: 90
