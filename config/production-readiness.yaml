@@ -17,12 +17,12 @@ authorization:
 
 gates:
   P0_EUPHORIA_SOURCE_001: PENDING
-  P0_EUPHORIA_CONTRACTS_001: PENDING
-  P0_EUPHORIA_BACKFILL_001: PENDING
-  P0_EUPHORIA_REALTIME_001: PENDING
-  P0_EUPHORIA_NORMALIZE_001: PENDING
-  P0_EUPHORIA_RECONCILE_001: PENDING
-  EUPHORIA_DATA_001: PENDING
+  P0_EUPHORIA_CONTRACTS_001: PARTIAL_EVIDENCE
+  P0_EUPHORIA_BACKFILL_001: BLOCKED
+  P0_EUPHORIA_REALTIME_001: BLOCKED
+  P0_EUPHORIA_NORMALIZE_001: BLOCKED
+  P0_EUPHORIA_RECONCILE_001: BLOCKED
+  EUPHORIA_DATA_001: BLOCKED
   Q0_HYPOTHESIS_REGISTRY: BLOCKED
   Q1_WALK_FORWARD: BLOCKED
   Q2_COST_MODEL: BLOCKED
@@ -30,6 +30,20 @@ gates:
   Q4_DSR_PBO_SPA: BLOCKED
   Q5_FROZEN_CANDIDATE: BLOCKED
   Q6_UNTOUCHED_HOLDOUT: BLOCKED
+
+contracts_evidence:
+  chain_id_verified: true
+  proxy_runtime_bytecode_verified: true
+  current_implementation_slot_verified: true
+  current_implementation_runtime_bytecode_verified: true
+  complete_erc1967_upgrade_history_verified: true
+  historical_implementation_bytecodes_verified: false
+  abi_verified: false
+  selector_semantics_verified: false
+  event_semantics_verified: false
+  oracle_dependency_verified: false
+  settlement_semantics_verified: false
+  fee_payout_semantics_verified: false
 
 certification_contract:
   required_unresolved_count: 0
