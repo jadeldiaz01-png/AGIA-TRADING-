@@ -21,6 +21,7 @@ READ_ONLY_METHODS = {
 class RpcClient:
     endpoint: str
     timeout_seconds: float = 20.0
+    user_agent: str = "AGIA-TRADING-EUPHORIA-DATA/0.1 read-only-research"
 
     def call(self, method: str, params: list[typing.Any]) -> typing.Any:
         if method not in READ_ONLY_METHODS:
@@ -36,7 +37,11 @@ class RpcClient:
         req = urllib.request.Request(
             self.endpoint,
             data=body,
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "User-Agent": self.user_agent,
+            },
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=self.timeout_seconds) as response:

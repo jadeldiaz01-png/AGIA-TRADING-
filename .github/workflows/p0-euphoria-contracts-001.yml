@@ -1,0 +1,43 @@
+name: p0-euphoria-contracts-001
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract-evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+      - name: Collect read-only MegaETH contract evidence
+        run: |
+          python -m agia_trading.euphoria_data.verify_contracts \
+            --out evidence/p0-euphoria-contracts-001.json
+      - name: Prove no financial authorization was enabled
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          evidence = json.loads(Path('evidence/p0-euphoria-contracts-001.json').read_text())
+          assert evidence['live_authorized'] is False
+          assert evidence['max_autonomous_capital_usd'] == 0
+          assert evidence['p0_euphoria_contracts_001'] == 'PARTIAL_EVIDENCE'
+          print('financial boundary PASS')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p0-euphoria-contracts-001-evidence
+          path: evidence/p0-euphoria-contracts-001.json
+          if-no-files-found: error
+          retention-days: 30
