@@ -14,7 +14,11 @@ from .rpc import RpcClient
 
 PROXY = "0x12759afca690637b425ffba3265f0dc2f6242a8d"
 EXPECTED_IMPLEMENTATION = "0x95d2a2cb2e9f1efb89f435752bbc8ccf61c3485a"
-DEFAULT_RPC = "https://mainnet.megaeth.com/rpc"
+DEFAULT_RPCS = [
+    "https://mainnet.megaeth.com/rpc",
+    "https://megaeth.drpc.org",
+    "https://public.1rpc.io/megaeth",
+]
 UPGRADED_TOPIC0 = "0xbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b"
 
 
@@ -35,7 +39,7 @@ def push4_candidates(bytecode: str) -> list[str]:
     return sorted(out)
 
 
-def collect(endpoint: str) -> dict:
+def collect_from_endpoint(endpoint: str) -> dict:
     rpc = RpcClient(endpoint)
     rpc.verify_chain_id(4326)
 
@@ -51,6 +55,7 @@ def collect(endpoint: str) -> dict:
     latest_block = int(rpc.call("eth_blockNumber", []), 16)
     return {
         "gate": "P0-EUPHORIA-CONTRACTS-001",
+        "source_endpoint": endpoint,
         "chain_id": 4326,
         "latest_block": latest_block,
         "proxy": PROXY,
@@ -76,13 +81,25 @@ def collect(endpoint: str) -> dict:
     }
 
 
+def collect(endpoints: list[str]) -> dict:
+    failures: list[dict[str, str]] = []
+    for endpoint in endpoints:
+        try:
+            evidence = collect_from_endpoint(endpoint)
+            evidence["rpc_failures_before_success"] = failures
+            return evidence
+        except Exception as exc:  # failover provenance, not silent suppression
+            failures.append({"endpoint": endpoint, "error": f"{type(exc).__name__}: {exc}"})
+    raise RuntimeError(f"all MegaETH RPC endpoints failed: {failures}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--rpc", default=DEFAULT_RPC)
+    parser.add_argument("--rpc", action="append", dest="rpcs")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
 
-    evidence = collect(args.rpc)
+    evidence = collect(args.rpcs or DEFAULT_RPCS)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(evidence, sort_keys=True))
