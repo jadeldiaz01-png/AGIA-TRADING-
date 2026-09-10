@@ -1,0 +1,66 @@
+name: euphoria-data-001
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install
+        run: python -m pip install --upgrade pip && pip install -e '.[dev]'
+      - name: Lint
+        run: ruff check src tests
+      - name: Unit tests
+        run: pytest
+      - name: Compile
+        run: python -m compileall -q src
+
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Dependency audit
+        run: |
+          python -m pip install --upgrade pip pip-audit
+          pip install -e .
+          pip-audit
+
+  authorization-boundary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prohibit accidental financial enablement
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('config/production-readiness.yaml').read_text()
+          required = [
+              'max_autonomous_capital_usd: 0',
+              'execution_enabled_by_default: false',
+              'live_authorized: false',
+              'llm_can_override_certifier: false',
+          ]
+          missing = [x for x in required if x not in p]
+          if missing:
+              raise SystemExit(f'authorization boundary violation: {missing}')
+          print('authorization boundary PASS')
