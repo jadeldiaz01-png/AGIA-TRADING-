@@ -8,7 +8,6 @@ from agia_trading.euphoria_data.contract_graph import (
     verify_expected_implementation,
 )
 
-
 EXPECTED_IMPLEMENTATION = "0x95d2a2cb2e9f1efb89f435752bbc8ccf61c3485a"
 
 
