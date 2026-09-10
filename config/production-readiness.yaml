@@ -37,7 +37,9 @@ contracts_evidence:
   current_implementation_slot_verified: true
   current_implementation_runtime_bytecode_verified: true
   complete_erc1967_upgrade_history_verified: true
-  historical_implementation_bytecodes_verified: false
+  historical_implementation_bytecodes_verified: true
+  recent_selector_samples_discovered_from_chain: true
+  observed_usdm_transfer_evidence: true
   abi_verified: false
   selector_semantics_verified: false
   event_semantics_verified: false
