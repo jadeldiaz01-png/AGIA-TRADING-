@@ -1,22 +1,29 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "chain_id": 4326,
   "network": "MegaETH mainnet",
   "contracts": [
     {
       "address": "0x12759afca690637b425ffba3265f0dc2f6242a8d",
       "observed_label": "Euphoria - MegaUSDTokenProxy",
-      "role": "UNKNOWN",
-      "verification_status": "DISCOVERED_NOT_SEMANTICALLY_VERIFIED",
+      "role": "PROXY",
+      "proxy_standard": "ERC1967",
+      "proxy_relationship_evidence": "MEGAETH_ETHERSCAN_PROXY_RESOLUTION",
+      "implementation_address": "0x95d2a2cb2e9f1efb89f435752bbc8ccf61c3485a",
+      "implementation_storage_slot": "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
+      "verification_status": "PROXY_RELATIONSHIP_IDENTIFIED_NOT_FULLY_SEMANTICALLY_VERIFIED",
       "abi_sha256": null,
       "bytecode_sha256": null,
-      "implementation_address": null,
+      "implementation_source_verified": false,
+      "implementation_bytecode_verified": false,
       "upgrade_history_verified": false,
       "trading_semantics_verified": false,
       "settlement_semantics_verified": false,
       "oracle_dependencies_verified": false,
+      "oracle_provider_candidate": "RedStone Bolt",
+      "oracle_candidate_basis": "provider documentation plus same-block co-occurrence; not treated as causal proof",
       "fee_payout_semantics_verified": false
     }
   ],
-  "certification_rule": "No contract may emit VERIFIED canonical economic events until ABI, bytecode, proxy implementation/upgrade history and relevant event semantics are independently verified."
+  "certification_rule": "No contract may emit VERIFIED canonical economic events until runtime bytecode, proxy implementation/upgrade history, required ABI or independently recovered selectors/events, and trading/settlement/oracle/fee semantics are reproducibly verified. Documentary or explorer labels are evidence inputs, never authority to enable financial execution."
 }
