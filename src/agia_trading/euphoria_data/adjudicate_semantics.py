@@ -7,6 +7,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from eth_hash.auto import keccak
+
 from .rpc import RpcClient
 
 RPC = "https://mainnet.megaeth.com/rpc"
@@ -17,7 +19,7 @@ EVENT_TOPICS = (
     "0x90cacdb710d0777a8e5fb6387c414be82e2ffe362a703077117a2a995fce12c1",
     "0x9f039a0ca58d6157d7b6914e2d60cedacf65fea21a365e93d708a5e5c25454f3",
 )
-USER_AGENT = "AGIA-TRADING-semantic-adjudicator/1.0"
+USER_AGENT = "AGIA-TRADING-semantic-adjudicator/1.1"
 
 
 def _get_json(url: str) -> dict:
@@ -27,6 +29,14 @@ def _get_json(url: str) -> dict:
     )
     with urllib.request.urlopen(req, timeout=20) as response:
         return json.loads(response.read())
+
+
+def signature_hash(signature: str) -> str:
+    return "0x" + keccak(signature.encode("utf-8")).hex()
+
+
+def function_selector(signature: str) -> str:
+    return signature_hash(signature)[:10]
 
 
 def _split_types(signature: str) -> list[str]:
@@ -68,8 +78,6 @@ def signature_shape_compatible(signature: str, calldata_hex: str) -> bool:
     types = _split_types(signature)
     if words < len(types):
         return False
-    # For dynamic top-level arguments, verify their head offsets are word-aligned
-    # and point inside the argument payload. This is intentionally conservative.
     for index, abi_type in enumerate(types):
         if not _is_dynamic(abi_type):
             continue
@@ -78,6 +86,18 @@ def signature_shape_compatible(signature: str, calldata_hex: str) -> bool:
         if offset % 32 or offset // 32 >= words:
             return False
     return True
+
+
+def event_shape_compatible(signature: str, log: dict) -> bool:
+    types = _split_types(signature)
+    data = log.get("data", "0x").removeprefix("0x")
+    if len(data) % 64:
+        return False
+    indexed_count = max(len(log.get("topics", [])) - 1, 0)
+    data_words = len(data) // 64
+    if any(_is_dynamic(abi_type) for abi_type in types):
+        return len(types) >= indexed_count
+    return len(types) == indexed_count + data_words
 
 
 def openchain_lookup(identifier: str, kind: str) -> list[str]:
@@ -117,6 +137,14 @@ def discover_samples(rpc: RpcClient, max_blocks: int = 1000) -> dict[str, list[d
             receipt = rpc.call("eth_getTransactionReceipt", [tx["hash"]])
             if receipt is None:
                 continue
+            logs = [
+                {
+                    "address": log["address"].lower(),
+                    "topics": [topic.lower() for topic in log.get("topics", [])],
+                    "data": log.get("data", "0x").lower(),
+                }
+                for log in receipt.get("logs", [])
+            ]
             found[selector].append(
                 {
                     "tx_hash": tx["hash"].lower(),
@@ -124,10 +152,7 @@ def discover_samples(rpc: RpcClient, max_blocks: int = 1000) -> dict[str, list[d
                     "calldata": calldata,
                     "calldata_bytes": (len(calldata) - 2) // 2,
                     "receipt_status": int(receipt["status"], 16),
-                    "log_topics": [
-                        [topic.lower() for topic in log.get("topics", [])]
-                        for log in receipt.get("logs", [])
-                    ],
+                    "logs": logs,
                 }
             )
         if all(len(samples) >= 2 for samples in found.values()):
@@ -135,6 +160,16 @@ def discover_samples(rpc: RpcClient, max_blocks: int = 1000) -> dict[str, list[d
     if any(not samples for samples in found.values()):
         raise RuntimeError(f"could not discover samples for all selectors: {found}")
     return found
+
+
+def _event_occurrences(samples: dict[str, list[dict]], topic: str) -> list[dict]:
+    return [
+        log
+        for selector_samples in samples.values()
+        for sample in selector_samples
+        for log in sample["logs"]
+        if log.get("topics") and log["topics"][0] == topic
+    ]
 
 
 def adjudicate(endpoint: str = RPC) -> dict:
@@ -146,11 +181,17 @@ def adjudicate(endpoint: str = RPC) -> dict:
     for selector in FUNCTION_SELECTORS:
         openchain = openchain_lookup(selector, "function")
         fourbyte = fourbyte_lookup(selector, "function")
+        hash_verified = sorted(
+            signature
+            for signature in set(openchain) | set(fourbyte)
+            if function_selector(signature) == selector
+        )
         intersection = sorted(set(openchain) & set(fourbyte))
         compatible = [
             signature
             for signature in intersection
-            if all(
+            if signature in hash_verified
+            and all(
                 signature_shape_compatible(signature, sample["calldata"])
                 for sample in samples[selector]
             )
@@ -165,6 +206,7 @@ def adjudicate(endpoint: str = RPC) -> dict:
             "status": status,
             "openchain_candidates": openchain,
             "fourbyte_candidates": fourbyte,
+            "hash_verified_candidates": hash_verified,
             "cross_database_shape_compatible": compatible,
             "semantic_verified": False,
             "samples": samples[selector],
@@ -174,10 +216,19 @@ def adjudicate(endpoint: str = RPC) -> dict:
     for topic in EVENT_TOPICS:
         openchain = openchain_lookup(topic, "event")
         fourbyte = fourbyte_lookup(topic, "event")
-        intersection = sorted(set(openchain) & set(fourbyte))
-        if len(intersection) == 1:
-            status = "CORROBORATED_SIGNATURE_CANDIDATE"
-        elif len(intersection) > 1:
+        candidates = sorted(set(openchain) | set(fourbyte))
+        hash_verified = [signature for signature in candidates if signature_hash(signature) == topic]
+        occurrences = _event_occurrences(samples, topic)
+        shape_verified = [
+            signature
+            for signature in hash_verified
+            if occurrences and all(event_shape_compatible(signature, log) for log in occurrences)
+        ]
+        cross_database = sorted(set(openchain) & set(fourbyte))
+        signature_verified = len(shape_verified) == 1
+        if signature_verified:
+            status = "SIGNATURE_AND_SHAPE_VERIFIED"
+        elif len(shape_verified) > 1:
             status = "COLLISION"
         else:
             status = "UNKNOWN"
@@ -185,8 +236,12 @@ def adjudicate(endpoint: str = RPC) -> dict:
             "status": status,
             "openchain_candidates": openchain,
             "fourbyte_candidates": fourbyte,
-            "cross_database_candidates": intersection,
-            "semantic_verified": False,
+            "cross_database_candidates": cross_database,
+            "hash_verified_candidates": hash_verified,
+            "shape_verified_candidates": shape_verified,
+            "observed_occurrences": len(occurrences),
+            "signature_verified": signature_verified,
+            "economic_role_verified": False,
         }
 
     return {
@@ -196,8 +251,9 @@ def adjudicate(endpoint: str = RPC) -> dict:
         "functions": functions,
         "events": events,
         "rule": (
-            "Signature databases are candidate evidence only. VERIFIED requires "
-            "independent protocol/source or deterministic behavioral/accounting proof."
+            "A cryptographically verified event signature is not sufficient to prove its "
+            "economic role. Function semantics, oracle, settlement, payout and fees remain "
+            "fail-closed until deterministic behavioral/accounting proof exists."
         ),
         "oracle_dependency_verified": False,
         "settlement_semantics_verified": False,
