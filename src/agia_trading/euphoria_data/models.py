@@ -5,7 +5,6 @@ import typing
 
 import pydantic
 
-
 SemanticConfidence = typing.Literal["VERIFIED", "PARTIAL", "UNKNOWN"]
 
 
