@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agia-trading"
+version = "0.1.0"
+description = "Deterministic research-data certification for AGIA Trading"
+requires-python = ">=3.12"
+dependencies = [
+  "pydantic>=2.10,<3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3,<9", "ruff>=0.9,<1"]
+
+[project.scripts]
+euphoria-certify = "agia_trading.euphoria_data.certifier:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
