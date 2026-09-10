@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import json
-import urllib.request
 from dataclasses import dataclass
+from json import dumps, loads
 from typing import Any
+from urllib.request import Request, urlopen
 
 
 READ_ONLY_METHODS = {
@@ -25,20 +25,20 @@ class RpcClient:
     def call(self, method: str, params: list[Any]) -> Any:
         if method not in READ_ONLY_METHODS:
             raise PermissionError(f"RPC method not allowlisted for data pipeline: {method}")
-        body = json.dumps({
+        body = dumps({
             "jsonrpc": "2.0",
             "id": 1,
             "method": method,
             "params": params,
         }).encode("utf-8")
-        req = urllib.request.Request(
+        req = Request(
             self.endpoint,
             data=body,
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=self.timeout_seconds) as response:
-            payload = json.loads(response.read())
+        with urlopen(req, timeout=self.timeout_seconds) as response:
+            payload = loads(response.read())
         if "error" in payload:
             raise RuntimeError(f"RPC error for {method}: {payload['error']}")
         return payload["result"]
