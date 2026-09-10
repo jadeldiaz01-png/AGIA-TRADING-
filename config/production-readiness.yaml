@@ -1,0 +1,39 @@
+version: 1
+system: AGIA-TRADING
+
+controls:
+  max_autonomous_capital_usd: 0
+  execution_enabled_by_default: false
+  llm_can_override_certifier: false
+
+authorization:
+  data_research_authorized: false
+  strategy_research_authorized: false
+  shadow_authorized: false
+  paper_authorized: false
+  testnet_authorized: false
+  limited_pilot_authorized: false
+  live_authorized: false
+
+gates:
+  P0_EUPHORIA_SOURCE_001: PENDING
+  P0_EUPHORIA_CONTRACTS_001: PENDING
+  P0_EUPHORIA_BACKFILL_001: PENDING
+  P0_EUPHORIA_REALTIME_001: PENDING
+  P0_EUPHORIA_NORMALIZE_001: PENDING
+  P0_EUPHORIA_RECONCILE_001: PENDING
+  EUPHORIA_DATA_001: PENDING
+  Q0_HYPOTHESIS_REGISTRY: BLOCKED
+  Q1_WALK_FORWARD: BLOCKED
+  Q2_COST_MODEL: BLOCKED
+  Q3_ROBUSTNESS: BLOCKED
+  Q4_DSR_PBO_SPA: BLOCKED
+  Q5_FROZEN_CANDIDATE: BLOCKED
+  Q6_UNTOUCHED_HOLDOUT: BLOCKED
+
+certification_contract:
+  required_unresolved_count: 0
+  dataset_sha256_required: true
+  frozen_dataset_required: true
+  verified_contract_graph_required: true
+  human_approval_required_for_financial_execution: true
