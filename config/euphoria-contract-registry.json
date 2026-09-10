@@ -1,14 +1,27 @@
 {
-  "schema_version": "1.2.0",
+  "schema_version": "1.3.0",
   "chain_id": 4326,
   "network": "MegaETH mainnet",
-  "evidence_run": {
+  "contract_evidence_run": {
     "workflow_run_id": 34476240656,
     "artifact_id": 10151593044,
     "artifact_digest": "sha256:e16d50e59ed9b2fbeb047ceeecd4b68ff2812d86cb5db112939fcf133d6c09de",
     "source_endpoint": "https://mainnet.megaeth.com/rpc",
     "scan_start_block": 0,
     "scan_end_block": 26245877
+  },
+  "semantic_evidence_run": {
+    "workflow_run_id": 34477814313,
+    "artifact_id": 10152251695,
+    "artifact_digest": "sha256:daf12a98c952c5ab0018b54a0fbc68f2de349f0f57bd47940b255fcf94e16a38",
+    "source_endpoint": "https://mainnet.megaeth.com/rpc",
+    "latest_block": 26246879,
+    "sample_discovery": {
+      "method": "eth_getBlockByNumber(full_transactions=true)",
+      "scanned_blocks": 235,
+      "preselected_transaction_hashes": false,
+      "selectors": ["0x21d5c9bb", "0x93ca625d"]
+    }
   },
   "contracts": [
     {
@@ -44,31 +57,76 @@
       "runtime_bytecode_verified": true,
       "source_verified": false,
       "abi_sha256": null,
-      "observed_transaction_selectors_verified_in_runtime": [
-        "0x21d5c9bb",
-        "0x93ca625d"
-      ],
+      "observed_transaction_selectors_verified_in_runtime": ["0x21d5c9bb", "0x93ca625d"],
       "selector_semantics_verified": false,
       "event_semantics_verified": false,
       "trading_semantics_verified": false,
       "settlement_semantics_verified": false,
       "oracle_dependencies_verified": false,
       "oracle_provider_candidate": "RedStone Bolt",
-      "oracle_candidate_basis": "provider documentation plus same-block co-occurrence; causal on-chain relationship not yet demonstrated",
+      "oracle_candidate_basis": "provider documentation; direct causal on-chain relationship not yet demonstrated",
       "fee_payout_semantics_verified": false,
-      "verification_status": "BYTECODE_VERIFIED_SEMANTICS_PENDING"
+      "verification_status": "BYTECODE_AND_RECENT_SELECTOR_ACTIVITY_VERIFIED_SEMANTICS_PENDING"
     },
     {
       "address": "0xa9eefd86a4ef1cc1b72eddc6da3b2c0b40016cbb",
       "role": "HISTORICAL_IMPLEMENTATION",
       "activation_block": 12116795,
       "deactivation_block": 12195602,
-      "runtime_bytecode_sha256": null,
-      "runtime_bytecode_verified": false,
+      "runtime_bytecode_sha256": "6b395b3d6313767f6ebf23cff59679b4f19fb4c4bb45dcc0539f255cf500be41",
+      "runtime_bytecode_verified": true,
       "source_verified": false,
       "abi_sha256": null,
-      "verification_status": "HISTORICAL_ADDRESS_VERIFIED_BYTECODE_PENDING"
+      "verification_status": "HISTORICAL_BYTECODE_VERIFIED_SEMANTICS_PENDING"
+    },
+    {
+      "address": "0xfafddbb3fc7688494971a79cc65dca3ef82079e7",
+      "observed_label": "MegaETH USDm",
+      "role": "OBSERVED_ASSET_CONTRACT",
+      "asset_symbol": "USDm",
+      "decimals": 18,
+      "relation_to_euphoria": "ERC20 Transfer logs observed in successful Euphoria proxy transactions",
+      "economic_role_verified": false,
+      "verification_status": "ASSET_IDENTITY_VERIFIED_PROTOCOL_ROLE_PENDING"
     }
   ],
-  "certification_rule": "P0-EUPHORIA-CONTRACTS-001 remains PARTIAL until every historical implementation bytecode is captured and the ABI/selectors/events plus oracle, settlement and fee/payout semantics are reproducibly verified. No contract evidence can authorize financial execution."
+  "semantic_observations": {
+    "sample_transactions": [
+      {
+        "selector": "0x21d5c9bb",
+        "tx_hash": "0xed0f9cf42a93920798ed35ae4d56f07ffa5d84fc7f8dc7cb10585779250c4046",
+        "block_number": 26246645,
+        "receipt_status": 1,
+        "calldata_bytes": 398,
+        "log_count": 3
+      },
+      {
+        "selector": "0x93ca625d",
+        "tx_hash": "0x0f6f4e72fd7f8b386ab12cc4db7dad94d38074f7859c50a2ad86ee07b2a337a0",
+        "block_number": 26246868,
+        "receipt_status": 1,
+        "calldata_bytes": 516,
+        "log_count": 5
+      }
+    ],
+    "observed_log_addresses": [
+      "0x12759afca690637b425ffba3265f0dc2f6242a8d",
+      "0xfafddbb3fc7688494971a79cc65dca3ef82079e7"
+    ],
+    "observed_topic0": [
+      "0x163aa6d2d8e5248ce93dbd22509af93e5f27f8e0edc15c9e26f2867c593e0870",
+      "0x90cacdb710d0777a8e5fb6387c414be82e2ffe362a703077117a2a995fce12c1",
+      "0x9f039a0ca58d6157d7b6914e2d60cedacf65fea21a365e93d708a5e5c25454f3",
+      "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+    ],
+    "known_topic_semantics": {
+      "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef": "ERC20 Transfer(address,address,uint256)"
+    },
+    "unknown_topic_semantics": [
+      "0x163aa6d2d8e5248ce93dbd22509af93e5f27f8e0edc15c9e26f2867c593e0870",
+      "0x90cacdb710d0777a8e5fb6387c414be82e2ffe362a703077117a2a995fce12c1",
+      "0x9f039a0ca58d6157d7b6914e2d60cedacf65fea21a365e93d708a5e5c25454f3"
+    ]
+  },
+  "certification_rule": "P0-EUPHORIA-CONTRACTS-001 remains PARTIAL until ABI/selectors/events plus oracle, settlement and fee/payout semantics are reproducibly verified. Observed USDm transfers do not by themselves establish trade, settlement, fee or payout meaning. No contract evidence can authorize financial execution."
 }
