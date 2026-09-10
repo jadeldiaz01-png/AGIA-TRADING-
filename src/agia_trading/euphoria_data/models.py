@@ -1,42 +1,44 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from typing import Literal
+import datetime
+import typing
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-
-
-SemanticConfidence = Literal["VERIFIED", "PARTIAL", "UNKNOWN"]
+import pydantic
 
 
-class RawChainRecord(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+SemanticConfidence = typing.Literal["VERIFIED", "PARTIAL", "UNKNOWN"]
 
-    chain_id: int = Field(ge=1)
-    evm_block_number: int = Field(ge=0)
+
+class RawChainRecord(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(extra="forbid")
+
+    chain_id: int = pydantic.Field(ge=1)
+    evm_block_number: int = pydantic.Field(ge=0)
     evm_block_hash: str
-    mini_block_number: int | None = Field(default=None, ge=0)
-    mini_block_timestamp: datetime | None = None
+    mini_block_number: int | None = pydantic.Field(default=None, ge=0)
+    mini_block_timestamp: datetime.datetime | None = None
     tx_hash: str
-    tx_index: int = Field(ge=0)
+    tx_index: int = pydantic.Field(ge=0)
     from_address: str
     to_address: str | None = None
-    nonce: int = Field(ge=0)
-    status: int | None = Field(default=None, ge=0, le=1)
-    gas_used: int | None = Field(default=None, ge=0)
-    effective_gas_price: int | None = Field(default=None, ge=0)
-    transaction_fee_wei: int | None = Field(default=None, ge=0)
+    nonce: int = pydantic.Field(ge=0)
+    status: int | None = pydantic.Field(default=None, ge=0, le=1)
+    gas_used: int | None = pydantic.Field(default=None, ge=0)
+    effective_gas_price: int | None = pydantic.Field(default=None, ge=0)
+    transaction_fee_wei: int | None = pydantic.Field(default=None, ge=0)
     contract_address: str | None = None
-    log_index: int | None = Field(default=None, ge=0)
+    log_index: int | None = pydantic.Field(default=None, ge=0)
     topic0: str | None = None
-    topics: list[str] = Field(default_factory=list)
+    topics: list[str] = pydantic.Field(default_factory=list)
     data: str | None = None
     source_endpoint: str
-    retrieved_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    retrieved_at: datetime.datetime = pydantic.Field(
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
+    )
     extractor_git_sha: str
     schema_version: str = "1.0.0"
 
-    @field_validator("tx_hash", "evm_block_hash")
+    @pydantic.field_validator("tx_hash", "evm_block_hash")
     @classmethod
     def require_hex_hash(cls, value: str) -> str:
         if not value.startswith("0x"):
@@ -44,8 +46,8 @@ class RawChainRecord(BaseModel):
         return value.lower()
 
 
-class CanonicalEvent(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+class CanonicalEvent(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(extra="forbid")
 
     chain_id: int
     tx_hash: str
@@ -63,7 +65,7 @@ class CanonicalEvent(BaseModel):
     pnl_atomic: int | None = None
     block_number: int
     mini_block_number: int | None = None
-    event_timestamp: datetime | None = None
+    event_timestamp: datetime.datetime | None = None
     raw_record_sha256: str
     abi_sha256: str | None = None
     bytecode_sha256: str | None = None
@@ -71,21 +73,21 @@ class CanonicalEvent(BaseModel):
     semantic_confidence: SemanticConfidence = "UNKNOWN"
 
 
-class ReconciliationIssue(BaseModel):
+class ReconciliationIssue(pydantic.BaseModel):
     code: str
     key: str
     detail: str
     blocking: bool = True
 
 
-class ReconciliationReport(BaseModel):
+class ReconciliationReport(pydantic.BaseModel):
     dataset_id: str = "EUPHORIA-DATA-001"
     total_raw_records: int
     total_canonical_events: int
     issues: list[ReconciliationIssue]
     unresolved_count: int
 
-    @field_validator("unresolved_count")
+    @pydantic.field_validator("unresolved_count")
     @classmethod
     def nonnegative(cls, value: int) -> int:
         if value < 0:
