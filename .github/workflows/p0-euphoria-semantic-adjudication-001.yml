@@ -32,7 +32,7 @@ jobs:
           assert p['live_authorized'] is False
           assert p['max_autonomous_capital_usd'] == 0
           assert all(not x['semantic_verified'] for x in p['functions'].values())
-          assert all(not x['semantic_verified'] for x in p['events'].values())
+          assert all(not x['economic_role_verified'] for x in p['events'].values())
           PY
       - uses: actions/upload-artifact@v4
         with:
