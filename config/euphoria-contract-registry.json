@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0.0",
+  "chain_id": 4326,
+  "network": "MegaETH mainnet",
+  "contracts": [
+    {
+      "address": "0x12759afca690637b425ffba3265f0dc2f6242a8d",
+      "observed_label": "Euphoria - MegaUSDTokenProxy",
+      "role": "UNKNOWN",
+      "verification_status": "DISCOVERED_NOT_SEMANTICALLY_VERIFIED",
+      "abi_sha256": null,
+      "bytecode_sha256": null,
+      "implementation_address": null,
+      "upgrade_history_verified": false,
+      "trading_semantics_verified": false,
+      "settlement_semantics_verified": false,
+      "oracle_dependencies_verified": false,
+      "fee_payout_semantics_verified": false
+    }
+  ],
+  "certification_rule": "No contract may emit VERIFIED canonical economic events until ABI, bytecode, proxy implementation/upgrade history and relevant event semantics are independently verified."
+}
