@@ -25,6 +25,7 @@ def test_classifies_targeted_counterpart_as_indexing_defect() -> None:
         [_event(INFLOW_EVENT, key, 100), _event(OUTFLOW_EVENT, key, 120)],
         1,
         1_000,
+        100,
     )
     assert result["label"] == "INDEXING_DEFECT"
     assert result["classification_verified"] is True
