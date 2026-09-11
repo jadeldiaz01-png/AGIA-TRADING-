@@ -1,0 +1,51 @@
+name: p0-euphoria-historical-lifecycle-001
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  historical-lifecycle-evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install project
+        run: pip install -e '.[dev]'
+      - name: Unit tests for historical lifecycle indexer
+        run: pytest -q tests/test_historical_lifecycle.py
+      - name: Build historical lifecycle evidence
+        run: |
+          python -m agia_trading.euphoria_data.historical_lifecycle \
+            --from-block 12116795 \
+            --max-enriched-pairs 64 \
+            --out evidence/p0-euphoria-historical-lifecycle-001.json
+      - name: Prove fail-closed boundary
+        run: |
+          python - <<'PY'
+          import json
+          p=json.load(open('evidence/p0-euphoria-historical-lifecycle-001.json'))
+          assert p['chain_id'] == 4326
+          assert p['range']['from_block'] == 12116795
+          assert p['backfill_authorized'] is False
+          assert p['paper_authorized'] is False
+          assert p['testnet_authorized'] is False
+          assert p['live_authorized'] is False
+          assert p['max_autonomous_capital_usd'] == 0
+          assert p['gross_payout_formula_verified'] is False
+          assert p['protocol_fee_formula_verified'] is False
+          assert p['deterministic_pnl_verified'] is False
+          assert p['unresolved_count'] > 0
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p0-euphoria-historical-lifecycle-001-evidence
+          path: evidence/p0-euphoria-historical-lifecycle-001.json
+          if-no-files-found: error
+          retention-days: 90
