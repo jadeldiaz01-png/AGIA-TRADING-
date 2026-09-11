@@ -1,0 +1,75 @@
+name: p0-scm-governance-001
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '17 4 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  scm-governance-evidence:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit live main protection
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request
+          repo=os.environ['REPOSITORY']
+          token=os.environ['GH_TOKEN']
+          req=urllib.request.Request(
+              f'https://api.github.com/repos/{repo}/branches/main',
+              headers={
+                  'Accept':'application/vnd.github+json',
+                  'Authorization':f'Bearer {token}',
+                  'X-GitHub-Api-Version':'2022-11-28',
+                  'User-Agent':'AGIA-TRADING-SCM-GOVERNANCE/1.0',
+              },
+          )
+          with urllib.request.urlopen(req, timeout=20) as r:
+              branch=json.loads(r.read())
+          required=[
+              'validate','security','authorization-boundary','contract-evidence',
+              'semantic-evidence','adjudication-evidence','accounting-evidence',
+              'signer-evidence','historical-lifecycle-evidence',
+          ]
+          protection=branch.get('protection') or {}
+          checks=(protection.get('required_status_checks') or {}).get('checks') or []
+          contexts=(protection.get('required_status_checks') or {}).get('contexts') or []
+          observed_names=sorted({*(x.get('context') for x in checks if x.get('context')), *contexts})
+          evidence={
+              'gate':'P0-SCM-GOVERNANCE-001',
+              'repository':repo,
+              'branch':'main',
+              'head_sha':branch.get('commit',{}).get('sha'),
+              'expected_sha':os.environ['EXPECTED_SHA'],
+              'protected':bool(branch.get('protected')),
+              'protection_enabled':bool(protection.get('enabled')),
+              'required_status_checks_observed':observed_names,
+              'required_status_checks_target':required,
+              'required_status_checks_complete':all(x in observed_names for x in required),
+              'status':'PASS' if branch.get('protected') and all(x in observed_names for x in required) else 'BLOCKED',
+              'live_authorized':False,
+              'max_autonomous_capital_usd':0,
+          }
+          os.makedirs('evidence', exist_ok=True)
+          open('evidence/p0-scm-governance-001.json','w').write(json.dumps(evidence,indent=2,sort_keys=True)+'\n')
+          print(json.dumps(evidence,sort_keys=True))
+          if evidence['status'] != 'PASS':
+              raise SystemExit('SCM governance remains BLOCKED: main protection/required checks not fully enforced')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p0-scm-governance-001-evidence
+          path: evidence/p0-scm-governance-001.json
+          if-no-files-found: error
+          retention-days: 90
