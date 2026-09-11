@@ -1,54 +1,33 @@
 from agia_trading.euphoria_data.historical_lifecycle import INFLOW_EVENT, OUTFLOW_EVENT
 from agia_trading.euphoria_data.orphan_semantics import (
     _address_topic,
+    _origin_block,
     _participant_accounts,
     _topic_address,
 )
 
 
+def _event(topic0: str, accounts: list[str], block: int = 100) -> dict:
+    return {
+        "topic0": topic0,
+        "block_number": block,
+        "topics": [topic0, "0x" + "ab" * 32, *[_address_topic(a) for a in accounts]],
+    }
+
+
 def _bundle(kind: str) -> dict:
-    account_a = "0x1111111111111111111111111111111111111111"
-    account_b = "0x2222222222222222222222222222222222222222"
-    if kind == "OPENING_ONLY":
-        logs = [
-            {
-                "topic0": INFLOW_EVENT,
-                "topics": [
-                    INFLOW_EVENT,
-                    "0x" + "ab" * 32,
-                    _address_topic(account_a),
-                    _address_topic(account_b),
-                ],
-            }
-        ]
-    else:
-        logs = [
-            {
-                "topic0": OUTFLOW_EVENT,
-                "topics": [
-                    OUTFLOW_EVENT,
-                    "0x" + "cd" * 32,
-                    _address_topic(account_a),
-                ],
-            }
-        ]
+    a = "0x1111111111111111111111111111111111111111"
+    b = "0x2222222222222222222222222222222222222222"
+    event = _event(INFLOW_EVENT, [a, b]) if kind == "OPENING_ONLY" else _event(OUTFLOW_EVENT, [a])
     return {
         "original_kind": kind,
-        "transaction_bundles": [
-            {
-                "complete": True,
-                "block_number": 100,
-                "euphoria_logs": logs,
-            }
-        ],
+        "transaction_bundles": [{"complete": True, "block_number": 100, "euphoria_logs": [event]}],
     }
 
 
 def test_address_topic_round_trip() -> None:
     address = "0x1234567890abcdef1234567890abcdef12345678"
-    topic = _address_topic(address)
-    assert len(topic) == 66
-    assert _topic_address(topic) == address
+    assert _topic_address(_address_topic(address)) == address
 
 
 def test_opening_extracts_two_participants() -> None:
@@ -64,9 +43,24 @@ def test_closing_extracts_paid_participant() -> None:
     ]
 
 
-def test_incomplete_bundle_has_no_participants() -> None:
+def test_targeted_log_fallback_for_opening() -> None:
+    a = "0x1111111111111111111111111111111111111111"
+    b = "0x2222222222222222222222222222222222222222"
     result = {
         "original_kind": "OPENING_ONLY",
         "transaction_bundles": [{"complete": False}],
+        "targeted_lifecycle_logs": [_event(INFLOW_EVENT, [a, b], 321)],
     }
-    assert _participant_accounts(result) == []
+    assert _participant_accounts(result) == [a, b]
+    assert _origin_block(result) == 321
+
+
+def test_targeted_log_fallback_for_closing() -> None:
+    a = "0x3333333333333333333333333333333333333333"
+    result = {
+        "original_kind": "CLOSING_ONLY",
+        "transaction_bundles": [{"complete": False}],
+        "targeted_lifecycle_logs": [_event(OUTFLOW_EVENT, [a], 654)],
+    }
+    assert _participant_accounts(result) == [a]
+    assert _origin_block(result) == 654
