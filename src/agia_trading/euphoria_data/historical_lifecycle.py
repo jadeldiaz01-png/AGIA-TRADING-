@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
+import urllib.error
 from collections import defaultdict
 from pathlib import Path
 
@@ -13,6 +15,8 @@ RPC = "https://mainnet.megaeth.com/rpc"
 DEFAULT_FROM_BLOCK = 12_116_795
 DEFAULT_WINDOW = 200_000
 MIN_WINDOW = 1_000
+MAX_RATE_LIMIT_RETRIES = 7
+SUCCESS_PAUSE_SECONDS = 0.15
 
 
 def _hex_int(value: str | int) -> int:
@@ -31,7 +35,7 @@ def _normalise_log(log: dict) -> dict:
     }
 
 
-def _get_logs_window(rpc: RpcClient, topic0: str, start: int, end: int) -> list[dict]:
+def _get_logs_window(rpc: RpcClient, topic0s: list[str], start: int, end: int) -> list[dict]:
     result = rpc.call(
         "eth_getLogs",
         [
@@ -39,16 +43,28 @@ def _get_logs_window(rpc: RpcClient, topic0: str, start: int, end: int) -> list[
                 "fromBlock": hex(start),
                 "toBlock": hex(end),
                 "address": PROXY,
-                "topics": [topic0],
+                "topics": [topic0s],
             }
         ],
     )
     return [_normalise_log(item) for item in result if not item.get("removed", False)]
 
 
+def _rate_limit_delay(exc: Exception, attempt: int) -> float | None:
+    if not isinstance(exc, urllib.error.HTTPError) or exc.code != 429:
+        return None
+    retry_after = exc.headers.get("Retry-After") if exc.headers else None
+    if retry_after:
+        try:
+            return min(max(float(retry_after), 1.0), 60.0)
+        except ValueError:
+            pass
+    return min(float(2**attempt), 60.0)
+
+
 def adaptive_get_logs(
     rpc: RpcClient,
-    topic0: str,
+    topic0s: list[str],
     start: int,
     end: int,
     initial_window: int = DEFAULT_WINDOW,
@@ -57,18 +73,34 @@ def adaptive_get_logs(
     window = max(initial_window, MIN_WINDOW)
     logs: list[dict] = []
     windows: list[dict] = []
+    rate_limit_events = 0
 
     while cursor <= end:
         window_end = min(cursor + window - 1, end)
-        try:
-            batch = _get_logs_window(rpc, topic0, cursor, window_end)
-        except Exception as exc:  # RPCs differ in their range/resource errors
-            if window <= MIN_WINDOW:
-                raise RuntimeError(
-                    f"eth_getLogs failed at minimum window {cursor}-{window_end}: {exc}"
-                ) from exc
-            window = max(window // 2, MIN_WINDOW)
-            continue
+        rate_attempt = 0
+        while True:
+            try:
+                batch = _get_logs_window(rpc, topic0s, cursor, window_end)
+                break
+            except Exception as exc:  # RPC providers expose different range/resource errors
+                delay = _rate_limit_delay(exc, rate_attempt)
+                if delay is not None:
+                    if rate_attempt >= MAX_RATE_LIMIT_RETRIES:
+                        raise RuntimeError(
+                            f"eth_getLogs rate limit persisted at {cursor}-{window_end} "
+                            f"after {MAX_RATE_LIMIT_RETRIES} retries"
+                        ) from exc
+                    rate_limit_events += 1
+                    rate_attempt += 1
+                    time.sleep(delay)
+                    continue
+                if window <= MIN_WINDOW:
+                    raise RuntimeError(
+                        f"eth_getLogs failed at minimum window {cursor}-{window_end}: {exc}"
+                    ) from exc
+                window = max(window // 2, MIN_WINDOW)
+                window_end = min(cursor + window - 1, end)
+                rate_attempt = 0
 
         logs.extend(batch)
         windows.append(
@@ -76,11 +108,14 @@ def adaptive_get_logs(
                 "from_block": cursor,
                 "to_block": window_end,
                 "log_count": len(batch),
+                "window_size": window_end - cursor + 1,
+                "rate_limit_events_cumulative": rate_limit_events,
             }
         )
         cursor = window_end + 1
         if len(batch) < 2_000 and window < initial_window:
             window = min(window * 2, initial_window)
+        time.sleep(SUCCESS_PAUSE_SECONDS)
 
     logs.sort(key=lambda item: (item["block_number"], item["log_index"]))
     return logs, windows
@@ -255,8 +290,14 @@ def collect(
     if from_block > end:
         raise ValueError("from_block is after to_block/latest")
 
-    openings, opening_windows = adaptive_get_logs(rpc, INFLOW_EVENT, from_block, end)
-    closings, closing_windows = adaptive_get_logs(rpc, OUTFLOW_EVENT, from_block, end)
+    all_logs, collection_windows = adaptive_get_logs(
+        rpc,
+        [INFLOW_EVENT, OUTFLOW_EVENT],
+        from_block,
+        end,
+    )
+    openings = [item for item in all_logs if item["topic0"] == INFLOW_EVENT]
+    closings = [item for item in all_logs if item["topic0"] == OUTFLOW_EVENT]
     structural = build_structural_index(openings, closings)
     coverage = enrich_pairs(rpc, structural["pairs"], max_enriched_pairs)
 
@@ -309,9 +350,12 @@ def collect(
         "source_endpoint": endpoint,
         "range": {"from_block": from_block, "to_block": end, "latest_block": latest},
         "collection": {
-            "method": "adaptive_eth_getLogs_windows",
-            "opening_windows": opening_windows,
-            "closing_windows": closing_windows,
+            "method": "adaptive_eth_getLogs_or_topics_with_429_backoff",
+            "windows": collection_windows,
+            "window_count": len(collection_windows),
+            "rate_limit_events": (
+                collection_windows[-1]["rate_limit_events_cumulative"] if collection_windows else 0
+            ),
         },
         "structural": {key: value for key, value in structural.items() if key != "pairs"},
         "economic_coverage": coverage,
