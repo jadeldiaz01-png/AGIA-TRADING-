@@ -19,6 +19,7 @@ gates:
   P0_EUPHORIA_SOURCE_001: PENDING
   P0_EUPHORIA_CONTRACTS_001: PARTIAL_EVIDENCE
   P0_EUPHORIA_ACCOUNTING_001: PARTIAL_EVIDENCE
+  P0_EUPHORIA_REDSTONE_SIGNERS_001: PARTIAL_EVIDENCE
   P0_EUPHORIA_BACKFILL_001: BLOCKED
   P0_EUPHORIA_REALTIME_001: BLOCKED
   P0_EUPHORIA_NORMALIZE_001: BLOCKED
@@ -57,7 +58,11 @@ accounting_evidence:
   sampled_lifecycle_linkage_verified: true
   sampled_lifecycle_amount_conservation_verified: true
   historical_lifecycle_linkage_completeness_verified: false
-  oracle_signer_policy_verified: false
+  sampled_redstone_signature_recovery_verified: true
+  sampled_redstone_signer_policy_verified: true
+  redstone_unique_signers_threshold_observed: 1
+  historical_redstone_signer_policy_completeness_verified: false
+  redstone_data_service_id_verified: false
   gross_payout_formula_verified: false
   protocol_fee_formula_verified: false
   deterministic_pnl_verified: false
@@ -69,4 +74,5 @@ certification_contract:
   verified_contract_graph_required: true
   deterministic_accounting_required: true
   complete_historical_lifecycle_linkage_required: true
+  complete_historical_oracle_signer_policy_required: true
   human_approval_required_for_financial_execution: true
