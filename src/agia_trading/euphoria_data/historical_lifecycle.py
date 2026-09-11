@@ -12,11 +12,13 @@ from .lifecycle import INFLOW_EVENT, INFLOW_SELECTOR, OUTFLOW_EVENT, OUTFLOW_SEL
 from .rpc import RpcClient
 
 RPC = "https://mainnet.megaeth.com/rpc"
+BLOCKSCOUT_LOGS_RPC = "https://megaeth.blockscout.com/api/eth-rpc"
 DEFAULT_FROM_BLOCK = 12_116_795
 DEFAULT_WINDOW = 200_000
-MIN_WINDOW = 1_000
+MIN_WINDOW = 10
+MAX_LOGS_RESPONSE = 1_000
 MAX_RATE_LIMIT_RETRIES = 7
-SUCCESS_PAUSE_SECONDS = 0.15
+SUCCESS_PAUSE_SECONDS = 0.05
 
 
 def _hex_int(value: str | int) -> int:
@@ -35,6 +37,30 @@ def _normalise_log(log: dict) -> dict:
     }
 
 
+def _rate_limit_delay(exc: Exception, attempt: int) -> float | None:
+    if not isinstance(exc, urllib.error.HTTPError) or exc.code != 429:
+        return None
+    retry_after = exc.headers.get("Retry-After") if exc.headers else None
+    if retry_after:
+        try:
+            return min(max(float(retry_after), 1.0), 60.0)
+        except ValueError:
+            pass
+    return min(float(2**attempt), 60.0)
+
+
+def _rpc_call_with_backoff(rpc: RpcClient, method: str, params: list, retries: int = 5):
+    for attempt in range(retries + 1):
+        try:
+            return rpc.call(method, params)
+        except Exception as exc:
+            delay = _rate_limit_delay(exc, attempt)
+            if delay is None or attempt >= retries:
+                raise
+            time.sleep(delay)
+    raise RuntimeError("unreachable")
+
+
 def _get_logs_window(rpc: RpcClient, topic0s: list[str], start: int, end: int) -> list[dict]:
     result = rpc.call(
         "eth_getLogs",
@@ -50,18 +76,6 @@ def _get_logs_window(rpc: RpcClient, topic0s: list[str], start: int, end: int) -
     return [_normalise_log(item) for item in result if not item.get("removed", False)]
 
 
-def _rate_limit_delay(exc: Exception, attempt: int) -> float | None:
-    if not isinstance(exc, urllib.error.HTTPError) or exc.code != 429:
-        return None
-    retry_after = exc.headers.get("Retry-After") if exc.headers else None
-    if retry_after:
-        try:
-            return min(max(float(retry_after), 1.0), 60.0)
-        except ValueError:
-            pass
-    return min(float(2**attempt), 60.0)
-
-
 def adaptive_get_logs(
     rpc: RpcClient,
     topic0s: list[str],
@@ -74,6 +88,7 @@ def adaptive_get_logs(
     logs: list[dict] = []
     windows: list[dict] = []
     rate_limit_events = 0
+    truncation_splits = 0
 
     while cursor <= end:
         window_end = min(cursor + window - 1, end)
@@ -81,8 +96,7 @@ def adaptive_get_logs(
         while True:
             try:
                 batch = _get_logs_window(rpc, topic0s, cursor, window_end)
-                break
-            except Exception as exc:  # RPC providers expose different range/resource errors
+            except Exception as exc:  # providers expose different range/resource errors
                 delay = _rate_limit_delay(exc, rate_attempt)
                 if delay is not None:
                     if rate_attempt >= MAX_RATE_LIMIT_RETRIES:
@@ -101,6 +115,22 @@ def adaptive_get_logs(
                 window = max(window // 2, MIN_WINDOW)
                 window_end = min(cursor + window - 1, end)
                 rate_attempt = 0
+                continue
+
+            # Blockscout documents a 1000-log response cap. Never accept an exact-cap
+            # response as complete unless the block window can no longer be split.
+            if len(batch) >= MAX_LOGS_RESPONSE:
+                if window <= MIN_WINDOW:
+                    raise RuntimeError(
+                        f"possible log truncation at minimum window {cursor}-{window_end}: "
+                        f"received {len(batch)} logs"
+                    )
+                truncation_splits += 1
+                window = max(window // 2, MIN_WINDOW)
+                window_end = min(cursor + window - 1, end)
+                rate_attempt = 0
+                continue
+            break
 
         logs.extend(batch)
         windows.append(
@@ -110,10 +140,11 @@ def adaptive_get_logs(
                 "log_count": len(batch),
                 "window_size": window_end - cursor + 1,
                 "rate_limit_events_cumulative": rate_limit_events,
+                "truncation_splits_cumulative": truncation_splits,
             }
         )
         cursor = window_end + 1
-        if len(batch) < 2_000 and window < initial_window:
+        if len(batch) < 250 and window < initial_window:
             window = min(window * 2, initial_window)
         time.sleep(SUCCESS_PAUSE_SECONDS)
 
@@ -197,10 +228,12 @@ def build_structural_index(openings: list[dict], closings: list[dict]) -> dict:
 
 
 def _select_coverage_pairs(pairs: list[dict], max_pairs: int) -> list[dict]:
+    if max_pairs <= 0 or not pairs:
+        return []
     if len(pairs) <= max_pairs:
         return pairs
-    if max_pairs < 2:
-        return [pairs[0]]
+    if max_pairs == 1:
+        return [pairs[len(pairs) // 2]]
     indexes = {round(index * (len(pairs) - 1) / (max_pairs - 1)) for index in range(max_pairs)}
     return [pairs[index] for index in sorted(indexes)]
 
@@ -216,10 +249,10 @@ def enrich_pairs(rpc: RpcClient, pairs: list[dict], max_pairs: int) -> dict:
     for pair in selected:
         opening_hash = pair["opening"]["transaction_hash"]
         closing_hash = pair["closing"]["transaction_hash"]
-        opening_tx = rpc.call("eth_getTransactionByHash", [opening_hash])
-        closing_tx = rpc.call("eth_getTransactionByHash", [closing_hash])
-        opening_receipt = rpc.call("eth_getTransactionReceipt", [opening_hash])
-        closing_receipt = rpc.call("eth_getTransactionReceipt", [closing_hash])
+        opening_tx = _rpc_call_with_backoff(rpc, "eth_getTransactionByHash", [opening_hash])
+        closing_tx = _rpc_call_with_backoff(rpc, "eth_getTransactionByHash", [closing_hash])
+        opening_receipt = _rpc_call_with_backoff(rpc, "eth_getTransactionReceipt", [opening_hash])
+        closing_receipt = _rpc_call_with_backoff(rpc, "eth_getTransactionReceipt", [closing_hash])
 
         if not opening_tx or not closing_tx or not opening_receipt or not closing_receipt:
             receipt_missing += 1
@@ -264,11 +297,12 @@ def enrich_pairs(rpc: RpcClient, pairs: list[dict], max_pairs: int) -> dict:
                 "economic_role_verified": False,
             }
         )
+        time.sleep(SUCCESS_PAUSE_SECONDS)
 
     return {
         "coverage_pair_count": len(selected),
         "total_pair_count": len(pairs),
-        "coverage_is_full": len(selected) == len(pairs),
+        "coverage_is_full": bool(pairs) and len(selected) == len(pairs),
         "receipt_missing_count_observed": receipt_missing,
         "oracle_payload_missing_count_observed": oracle_payload_missing,
         "amount_reconciliation_errors_observed": amount_errors,
@@ -279,19 +313,22 @@ def enrich_pairs(rpc: RpcClient, pairs: list[dict], max_pairs: int) -> dict:
 
 def collect(
     endpoint: str = RPC,
+    logs_endpoint: str = BLOCKSCOUT_LOGS_RPC,
     from_block: int = DEFAULT_FROM_BLOCK,
     to_block: int | None = None,
-    max_enriched_pairs: int = 64,
+    max_enriched_pairs: int = 16,
 ) -> dict:
     rpc = RpcClient(endpoint)
+    logs_rpc = RpcClient(logs_endpoint, user_agent="AGIA-TRADING-HISTORICAL-INDEX/1.0 read-only")
     rpc.verify_chain_id(4326)
-    latest = _hex_int(rpc.call("eth_blockNumber", []))
+    logs_rpc.verify_chain_id(4326)
+    latest = _hex_int(_rpc_call_with_backoff(rpc, "eth_blockNumber", []))
     end = latest if to_block is None else min(to_block, latest)
     if from_block > end:
         raise ValueError("from_block is after to_block/latest")
 
     all_logs, collection_windows = adaptive_get_logs(
-        rpc,
+        logs_rpc,
         [INFLOW_EVENT, OUTFLOW_EVENT],
         from_block,
         end,
@@ -347,14 +384,21 @@ def collect(
         "gate": "P0-EUPHORIA-HISTORICAL-LIFECYCLE-001",
         "status": "PARTIAL_EVIDENCE" if unresolved else "PASS",
         "chain_id": 4326,
-        "source_endpoint": endpoint,
+        "sources": {
+            "authoritative_rpc": endpoint,
+            "historical_log_index": logs_endpoint,
+            "historical_log_index_role": "discovery/index only; tx/receipt verification uses authoritative RPC",
+        },
         "range": {"from_block": from_block, "to_block": end, "latest_block": latest},
         "collection": {
-            "method": "adaptive_eth_getLogs_or_topics_with_429_backoff",
+            "method": "blockscout_eth_getLogs_adaptive_windows_with_cap_detection",
             "windows": collection_windows,
             "window_count": len(collection_windows),
             "rate_limit_events": (
                 collection_windows[-1]["rate_limit_events_cumulative"] if collection_windows else 0
+            ),
+            "truncation_splits": (
+                collection_windows[-1]["truncation_splits_cumulative"] if collection_windows else 0
             ),
         },
         "structural": {key: value for key, value in structural.items() if key != "pairs"},
@@ -393,12 +437,19 @@ def collect(
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--rpc", default=RPC)
+    parser.add_argument("--logs-rpc", default=BLOCKSCOUT_LOGS_RPC)
     parser.add_argument("--from-block", type=int, default=DEFAULT_FROM_BLOCK)
     parser.add_argument("--to-block", type=int)
-    parser.add_argument("--max-enriched-pairs", type=int, default=64)
+    parser.add_argument("--max-enriched-pairs", type=int, default=16)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
-    evidence = collect(args.rpc, args.from_block, args.to_block, args.max_enriched_pairs)
+    evidence = collect(
+        args.rpc,
+        args.logs_rpc,
+        args.from_block,
+        args.to_block,
+        args.max_enriched_pairs,
+    )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(evidence, sort_keys=True))
