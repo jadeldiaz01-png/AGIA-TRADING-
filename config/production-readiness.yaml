@@ -16,10 +16,14 @@ authorization:
   live_authorized: false
 
 gates:
+  P0_SCM_GOVERNANCE_001: BLOCKED
   P0_EUPHORIA_SOURCE_001: PENDING
   P0_EUPHORIA_CONTRACTS_001: PARTIAL_EVIDENCE
   P0_EUPHORIA_ACCOUNTING_001: PARTIAL_EVIDENCE
   P0_EUPHORIA_REDSTONE_SIGNERS_001: PARTIAL_EVIDENCE
+  P0_EUPHORIA_HISTORICAL_LIFECYCLE_001: PARTIAL_EVIDENCE
+  P0_EUPHORIA_EXCEPTION_ADJUDICATION_001: BLOCKED
+  P0_EUPHORIA_ECONOMIC_ENRICHMENT_001: BLOCKED
   P0_EUPHORIA_BACKFILL_001: BLOCKED
   P0_EUPHORIA_REALTIME_001: BLOCKED
   P0_EUPHORIA_NORMALIZE_001: BLOCKED
@@ -32,6 +36,16 @@ gates:
   Q4_DSR_PBO_SPA: BLOCKED
   Q5_FROZEN_CANDIDATE: BLOCKED
   Q6_UNTOUCHED_HOLDOUT: BLOCKED
+
+scm_governance:
+  default_branch: main
+  branch_protection_verified: false
+  pull_request_required_verified: false
+  required_status_checks_verified: false
+  required_checks_bound_to_expected_app_verified: false
+  force_push_blocked_verified: false
+  exact_sha_promotion_required: true
+  merge_requires_governance_gate: true
 
 contracts_evidence:
   chain_id_verified: true
@@ -57,7 +71,13 @@ accounting_evidence:
   unknown_event_preservation_implemented: true
   sampled_lifecycle_linkage_verified: true
   sampled_lifecycle_amount_conservation_verified: true
+  historical_lifecycle_indexer_implemented: true
   historical_lifecycle_linkage_completeness_verified: false
+  historical_exception_inventory_hash_verified: false
+  historical_exception_adjudication_verified: false
+  historical_full_receipt_coverage_verified: false
+  historical_full_oracle_payload_coverage_verified: false
+  historical_full_amount_reconciliation_verified: false
   sampled_redstone_signature_recovery_verified: true
   sampled_redstone_signer_policy_verified: true
   redstone_unique_signers_threshold_observed: 1
@@ -69,10 +89,25 @@ accounting_evidence:
 
 certification_contract:
   required_unresolved_count: 0
+  correlation_key_uniqueness_required: true
+  orphan_opening_count_required: 0
+  orphan_closing_count_required: 0
+  duplicate_lifecycle_count_required: 0
+  unclassified_exception_count_required: 0
+  exception_inventory_sha256_required: true
+  adjudication_ledger_sha256_required: true
+  receipt_missing_count_required: 0
+  oracle_payload_missing_count_required: 0
+  amount_reconciliation_errors_required: 0
+  unknown_semantic_count_required: 0
   dataset_sha256_required: true
   frozen_dataset_required: true
   verified_contract_graph_required: true
   deterministic_accounting_required: true
   complete_historical_lifecycle_linkage_required: true
   complete_historical_oracle_signer_policy_required: true
+  protected_default_branch_required: true
+  required_status_checks_required: true
+  pull_request_only_merge_required: true
+  exact_sha_promotion_required: true
   human_approval_required_for_financial_execution: true

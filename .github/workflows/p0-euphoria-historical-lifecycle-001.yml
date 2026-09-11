@@ -1,0 +1,193 @@
+name: p0-euphoria-historical-lifecycle-001
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prepare-historical-shards:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      latest: ${{ steps.plan.outputs.latest }}
+    steps:
+      - id: plan
+        name: Freeze tip and build contiguous shard matrix
+        shell: python
+        env:
+          GITHUB_OUTPUT_FILE: ${{ github.output }}
+        run: |
+          import json, os, urllib.request
+          endpoint='https://mainnet.megaeth.com/rpc'
+          body=json.dumps({'jsonrpc':'2.0','id':1,'method':'eth_blockNumber','params':[]}).encode()
+          req=urllib.request.Request(endpoint,data=body,headers={
+              'Content-Type':'application/json','Accept':'application/json',
+              'User-Agent':'AGIA-TRADING-HISTORICAL-PLAN/1.0 read-only'})
+          with urllib.request.urlopen(req,timeout=20) as r:
+              latest=int(json.loads(r.read())['result'],16)
+          start=12116795
+          shard_size=1_000_000
+          include=[]
+          index=0
+          cursor=start
+          while cursor <= latest:
+              end=min(cursor+shard_size-1,latest)
+              include.append({'index':index,'from_block':cursor,'to_block':end})
+              index+=1
+              cursor=end+1
+          matrix=json.dumps({'include':include},separators=(',',':'))
+          output=os.environ['GITHUB_OUTPUT']
+          with open(output,'a',encoding='utf-8') as f:
+              f.write(f'matrix={matrix}\n')
+              f.write(f'latest={latest}\n')
+          print(json.dumps({'from_block':start,'latest':latest,'shard_count':len(include)}))
+
+  historical-shard:
+    needs: prepare-historical-shards
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix: ${{ fromJSON(needs.prepare-historical-shards.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install project
+        run: pip install -e '.[dev]'
+      - name: Scan immutable historical shard
+        run: |
+          mkdir -p evidence/shards
+          python -m agia_trading.euphoria_data.historical_shards scan \
+            --index ${{ matrix.index }} \
+            --from-block ${{ matrix.from_block }} \
+            --to-block ${{ matrix.to_block }} \
+            --out evidence/shards/shard-${{ matrix.index }}.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p0-euphoria-historical-shard-${{ matrix.index }}
+          path: evidence/shards/shard-${{ matrix.index }}.json
+          if-no-files-found: error
+          retention-days: 90
+
+  historical-lifecycle-evidence:
+    needs: [prepare-historical-shards, historical-shard]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install project
+        run: pip install -e '.[dev]'
+      - name: Unit tests for historical lifecycle indexer
+        run: pytest -q tests/test_historical_lifecycle.py tests/test_historical_shards.py tests/test_exception_adjudication.py
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: p0-euphoria-historical-shard-*
+          path: evidence/shards
+          merge-multiple: true
+      - name: Aggregate shards and verify structural historical coverage
+        run: |
+          python -m agia_trading.euphoria_data.historical_shards aggregate \
+            --shards evidence/shards \
+            --expected-from 12116795 \
+            --expected-to ${{ needs.prepare-historical-shards.outputs.latest }} \
+            --out evidence/p0-euphoria-historical-lifecycle-001.json
+      - name: Prove fail-closed boundary
+        run: |
+          python - <<'PY'
+          import json
+          p=json.load(open('evidence/p0-euphoria-historical-lifecycle-001.json'))
+          assert p['chain_id'] == 4326
+          assert p['range']['from_block'] == 12116795
+          assert p['range']['to_block'] == int('${{ needs.prepare-historical-shards.outputs.latest }}')
+          assert p['sources']['historical_log_index'].startswith('https://megaeth.blockscout.com/')
+          assert p['sources']['economic_authoritative_rpc'] == 'https://mainnet.megaeth.com/rpc'
+          assert p['sharding']['coverage_gap_or_overlap_count'] == 0
+          assert p['sharding']['duplicate_log_count'] == 0
+          assert p['economic_coverage']['status'] == 'NOT_EVALUATED'
+          assert p['economic_coverage']['coverage_pair_count'] == 0
+          assert p['historical_economic_coverage_verified'] is False
+          assert p['backfill_authorized'] is False
+          assert p['paper_authorized'] is False
+          assert p['testnet_authorized'] is False
+          assert p['live_authorized'] is False
+          assert p['max_autonomous_capital_usd'] == 0
+          assert p['gross_payout_formula_verified'] is False
+          assert p['protocol_fee_formula_verified'] is False
+          assert p['deterministic_pnl_verified'] is False
+          assert p['unresolved_count'] > 0
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p0-euphoria-historical-lifecycle-001-evidence
+          path: evidence/p0-euphoria-historical-lifecycle-001.json
+          if-no-files-found: error
+          retention-days: 90
+
+  exception-adjudication-evidence:
+    needs: historical-lifecycle-evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install project
+        run: pip install -e '.[dev]'
+      - name: Unit tests for exception adjudication
+        run: pytest -q tests/test_exception_adjudication.py
+      - uses: actions/download-artifact@v4
+        with:
+          name: p0-euphoria-historical-lifecycle-001-evidence
+          path: evidence
+      - uses: actions/cache@v4
+        with:
+          path: evidence/cache/p0-euphoria-exceptions
+          key: euphoria-exception-rpc-${{ github.event.pull_request.head.sha || github.sha }}
+          restore-keys: |
+            euphoria-exception-rpc-
+      - name: Adjudicate all historical structural exceptions
+        run: |
+          python -m agia_trading.euphoria_data.exception_adjudication \
+            --historical-evidence evidence/p0-euphoria-historical-lifecycle-001.json \
+            --out evidence/p0-euphoria-exception-adjudication-001.json
+      - name: Prove exception gate remains fail-closed
+        run: |
+          python - <<'PY'
+          import json
+          p=json.load(open('evidence/p0-euphoria-exception-adjudication-001.json'))
+          assert p['chain_id'] == 4326
+          assert p['source_exception_inventory_sha256']
+          assert p['adjudication_ledger_sha256']
+          assert p['exception_count'] >= 0
+          assert p['true_orphan_opening_count'] >= 0
+          assert p['true_orphan_closing_count'] >= 0
+          assert p['unclassified_exception_count'] >= 0
+          assert p['economic_semantics_verified'] is False
+          assert p['gross_payout_formula_verified'] is False
+          assert p['protocol_fee_formula_verified'] is False
+          assert p['deterministic_pnl_verified'] is False
+          assert p['backfill_authorized'] is False
+          assert p['paper_authorized'] is False
+          assert p['testnet_authorized'] is False
+          assert p['live_authorized'] is False
+          assert p['max_autonomous_capital_usd'] == 0
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p0-euphoria-exception-adjudication-001-evidence
+          path: |
+            evidence/p0-euphoria-exception-adjudication-001.json
+            evidence/cache/p0-euphoria-exceptions
+          if-no-files-found: warn
+          retention-days: 90

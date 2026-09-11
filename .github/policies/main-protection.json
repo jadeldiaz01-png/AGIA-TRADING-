@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0",
+  "gate": "P0-SCM-GOVERNANCE-001",
+  "target": "refs/heads/main",
+  "enforcement": "ACTIVE_REQUIRED",
+  "pull_request_required": true,
+  "required_approving_review_count": 1,
+  "dismiss_stale_reviews": true,
+  "require_code_owner_review": false,
+  "require_last_push_approval": true,
+  "required_status_checks_strict": true,
+  "required_status_checks": [
+    "validate",
+    "security",
+    "authorization-boundary",
+    "contract-evidence",
+    "semantic-evidence",
+    "adjudication-evidence",
+    "accounting-evidence",
+    "signer-evidence",
+    "historical-lifecycle-evidence"
+  ],
+  "block_force_pushes": true,
+  "block_deletions": true,
+  "require_signed_commits": true,
+  "exact_sha_promotion_required": true,
+  "bypass_policy": "NO_ROUTINE_BYPASS; emergency bypass requires named human, incident record, reason, and post-incident review",
+  "financial_boundary": {
+    "live_authorized": false,
+    "max_autonomous_capital_usd": 0
+  }
+}
