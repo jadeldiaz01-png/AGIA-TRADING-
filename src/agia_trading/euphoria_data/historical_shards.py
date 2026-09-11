@@ -236,7 +236,7 @@ def aggregate_shards(
             "counts_by_kind": exception_counts,
             "inventory_sha256": _digest(exceptions),
             "inventory": exceptions,
-            "all_adjudicated": False if exceptions else True,
+            "all_adjudicated": not exceptions,
         },
         "economic_coverage": {
             "status": "NOT_EVALUATED",
