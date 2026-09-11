@@ -10,10 +10,8 @@ from .historical_lifecycle import (
     DEFAULT_FROM_BLOCK,
     INFLOW_EVENT,
     OUTFLOW_EVENT,
-    RPC,
     adaptive_get_logs,
     build_structural_index,
-    enrich_pairs,
 )
 from .rpc import RpcClient
 
@@ -51,7 +49,9 @@ def scan_shard(
         "log_count": len(logs),
         "windows": windows,
     }
-    payload["payload_sha256"] = _digest({key: value for key, value in payload.items() if key != "payload_sha256"})
+    payload["payload_sha256"] = _digest(
+        {key: value for key, value in payload.items() if key != "payload_sha256"}
+    )
     return payload
 
 
@@ -66,12 +66,52 @@ def _verify_shard(shard: dict) -> None:
         raise RuntimeError(f"shard row-count mismatch index={shard.get('shard_index')}")
 
 
+def _exception_inventory(openings: list[dict], closings: list[dict]) -> list[dict]:
+    by_open: dict[str, list[dict]] = {}
+    by_close: dict[str, list[dict]] = {}
+    for item in openings:
+        key = item.get("correlation_key")
+        if key:
+            by_open.setdefault(key, []).append(item)
+    for item in closings:
+        key = item.get("correlation_key")
+        if key:
+            by_close.setdefault(key, []).append(item)
+
+    exceptions: list[dict] = []
+    for key in sorted(set(by_open) | set(by_close)):
+        open_items = by_open.get(key, [])
+        close_items = by_close.get(key, [])
+        if len(open_items) == 1 and len(close_items) == 1:
+            continue
+        if open_items and not close_items:
+            kind = "OPENING_ONLY"
+        elif close_items and not open_items:
+            kind = "CLOSING_ONLY"
+        elif len(open_items) > 1 or len(close_items) > 1:
+            kind = "DUPLICATE_LIFECYCLE"
+        else:
+            kind = "UNCLASSIFIED_STRUCTURE"
+        exceptions.append(
+            {
+                "correlation_key": key,
+                "kind": kind,
+                "opening_count": len(open_items),
+                "closing_count": len(close_items),
+                "openings": open_items,
+                "closings": close_items,
+                "adjudication_status": "UNRESOLVED",
+                "adjudication_label": None,
+                "economic_role_verified": False,
+            }
+        )
+    return exceptions
+
+
 def aggregate_shards(
     shard_files: list[Path],
     expected_from: int,
     expected_to: int,
-    endpoint: str = RPC,
-    max_enriched_pairs: int = 16,
 ) -> dict:
     if not shard_files:
         raise RuntimeError("no shard files supplied")
@@ -125,16 +165,10 @@ def aggregate_shards(
         raise RuntimeError(f"unexpected lifecycle topics: {unexpected_topics}")
 
     structural = build_structural_index(openings, closings)
-    rpc = RpcClient(endpoint)
-    rpc.verify_chain_id(4326)
-    coverage = enrich_pairs(rpc, structural["pairs"], max_enriched_pairs)
-    full_economic_coverage = coverage["coverage_is_full"]
-    all_observed_clean = (
-        coverage["receipt_missing_count_observed"] == 0
-        and coverage["oracle_payload_missing_count_observed"] == 0
-        and coverage["amount_reconciliation_errors_observed"] == 0
-        and coverage["selector_mismatch_count_observed"] == 0
-    )
+    exceptions = _exception_inventory(openings, closings)
+    exception_counts: dict[str, int] = {}
+    for item in exceptions:
+        exception_counts[item["kind"]] = exception_counts.get(item["kind"], 0) + 1
 
     unresolved: list[str] = []
     if structural["correlation_key_uniqueness"] != "PASS":
@@ -147,18 +181,13 @@ def aggregate_shards(
         unresolved.append("duplicate_lifecycles")
     if structural["ordering_error_count"]:
         unresolved.append("lifecycle_ordering")
-    if not full_economic_coverage:
-        unresolved.extend(
-            [
-                "historical_receipt_coverage",
-                "historical_oracle_payload_coverage",
-                "historical_amount_reconciliation_coverage",
-            ]
-        )
-    elif not all_observed_clean:
-        unresolved.append("historical_economic_evidence_errors")
+
     unresolved.extend(
         [
+            "historical_exception_adjudication",
+            "historical_receipt_coverage",
+            "historical_oracle_payload_coverage",
+            "historical_amount_reconciliation_coverage",
             "opening_event_economic_role",
             "closing_event_economic_role",
             "balance_update_economic_role",
@@ -183,42 +212,58 @@ def aggregate_shards(
 
     return {
         "gate": "P0-EUPHORIA-HISTORICAL-LIFECYCLE-001",
-        "status": "PARTIAL_EVIDENCE" if unresolved else "PASS",
+        "status": "PARTIAL_EVIDENCE",
         "chain_id": 4326,
         "range": {"from_block": expected_from, "to_block": expected_to},
         "sources": {
-            "authoritative_rpc": endpoint,
             "historical_log_index": next(iter(sources)),
-            "historical_log_index_role": "discovery/index only; tx/receipt verification uses authoritative RPC",
+            "historical_log_index_role": "discovery/index only",
+            "economic_authoritative_rpc": "https://mainnet.megaeth.com/rpc",
+            "economic_authoritative_rpc_role": "reserved for the separate 100% economic enrichment gate",
         },
         "sharding": {
             "strategy": "contiguous_non_overlapping_block_ranges",
             "shard_count": len(shards),
             "coverage_gap_or_overlap_count": 0,
             "duplicate_log_count": 0,
+            "total_log_count": len(logs),
             "manifest_sha256": _digest(shard_manifest),
             "manifest": shard_manifest,
         },
         "structural": {key: value for key, value in structural.items() if key != "pairs"},
-        "economic_coverage": coverage,
+        "exceptions": {
+            "count": len(exceptions),
+            "counts_by_kind": exception_counts,
+            "inventory_sha256": _digest(exceptions),
+            "inventory": exceptions,
+            "all_adjudicated": False if exceptions else True,
+        },
+        "economic_coverage": {
+            "status": "NOT_EVALUATED",
+            "gate": "P0-EUPHORIA-ECONOMIC-ENRICHMENT-001",
+            "coverage_pair_count": 0,
+            "total_pair_count": structural["matched_pair_count"],
+            "coverage_is_full": False,
+            "receipt_missing_count": None,
+            "oracle_payload_missing_count": None,
+            "amount_reconciliation_errors": None,
+            "unknown_semantic_count": None,
+        },
         "scientific_targets": {
             "correlation_key_uniqueness": structural["correlation_key_uniqueness"],
             "orphan_opening_count": structural["orphan_opening_count"],
             "orphan_closing_count": structural["orphan_closing_count"],
             "duplicate_lifecycle_count": structural["duplicate_lifecycle_count"],
-            "receipt_missing_count": (
-                coverage["receipt_missing_count_observed"] if full_economic_coverage else None
-            ),
-            "oracle_payload_missing_count": (
-                coverage["oracle_payload_missing_count_observed"] if full_economic_coverage else None
-            ),
-            "amount_reconciliation_errors": (
-                coverage["amount_reconciliation_errors_observed"] if full_economic_coverage else None
-            ),
-            "unknown_semantic_count": 7,
+            "ordering_error_count": structural["ordering_error_count"],
+            "unclassified_exception_count": len(exceptions),
+            "receipt_missing_count": None,
+            "oracle_payload_missing_count": None,
+            "amount_reconciliation_errors": None,
+            "unknown_semantic_count": None,
         },
         "historical_structural_linkage_verified": structural["structural_lifecycle_linkage"] == "PASS",
-        "historical_economic_coverage_verified": full_economic_coverage and all_observed_clean,
+        "historical_exception_adjudication_verified": not exceptions,
+        "historical_economic_coverage_verified": False,
         "gross_payout_formula_verified": False,
         "protocol_fee_formula_verified": False,
         "deterministic_pnl_verified": False,
@@ -247,8 +292,6 @@ def main() -> None:
     aggregate.add_argument("--shards", type=Path, required=True)
     aggregate.add_argument("--expected-from", type=int, default=DEFAULT_FROM_BLOCK)
     aggregate.add_argument("--expected-to", type=int, required=True)
-    aggregate.add_argument("--rpc", default=RPC)
-    aggregate.add_argument("--max-enriched-pairs", type=int, default=16)
     aggregate.add_argument("--out", type=Path, required=True)
 
     args = parser.parse_args()
@@ -260,8 +303,6 @@ def main() -> None:
             shard_files,
             args.expected_from,
             args.expected_to,
-            args.rpc,
-            args.max_enriched_pairs,
         )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
