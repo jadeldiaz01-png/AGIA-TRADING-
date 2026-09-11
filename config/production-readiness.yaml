@@ -18,6 +18,7 @@ authorization:
 gates:
   P0_EUPHORIA_SOURCE_001: PENDING
   P0_EUPHORIA_CONTRACTS_001: PARTIAL_EVIDENCE
+  P0_EUPHORIA_ACCOUNTING_001: PARTIAL_EVIDENCE
   P0_EUPHORIA_BACKFILL_001: BLOCKED
   P0_EUPHORIA_REALTIME_001: BLOCKED
   P0_EUPHORIA_NORMALIZE_001: BLOCKED
@@ -47,9 +48,25 @@ contracts_evidence:
   settlement_semantics_verified: false
   fee_payout_semantics_verified: false
 
+accounting_evidence:
+  redstone_transport_layout_bound_to_official_constants: true
+  redstone_payload_structural_parser_implemented: true
+  usdm_transfer_accounting_implemented: true
+  balance_update_decoding_implemented: true
+  unknown_event_preservation_implemented: true
+  sampled_lifecycle_linkage_verified: true
+  sampled_lifecycle_amount_conservation_verified: true
+  historical_lifecycle_linkage_completeness_verified: false
+  oracle_signer_policy_verified: false
+  gross_payout_formula_verified: false
+  protocol_fee_formula_verified: false
+  deterministic_pnl_verified: false
+
 certification_contract:
   required_unresolved_count: 0
   dataset_sha256_required: true
   frozen_dataset_required: true
   verified_contract_graph_required: true
+  deterministic_accounting_required: true
+  complete_historical_lifecycle_linkage_required: true
   human_approval_required_for_financial_execution: true
