@@ -1,0 +1,45 @@
+name: p0-euphoria-accounting-001
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  accounting-evidence:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install project
+        run: pip install -e '.[dev]'
+      - name: Unit tests for accounting parser
+        run: pytest -q tests/test_euphoria_accounting.py
+      - name: Collect read-only accounting evidence
+        run: |
+          python -m agia_trading.euphoria_data.accounting \
+            --out evidence/p0-euphoria-accounting-001.json
+      - name: Prove fail-closed accounting boundary
+        run: |
+          python - <<'PY'
+          import json
+          p=json.load(open('evidence/p0-euphoria-accounting-001.json'))
+          assert p['backfill_authorized'] is False
+          assert p['paper_authorized'] is False
+          assert p['testnet_authorized'] is False
+          assert p['live_authorized'] is False
+          assert p['max_autonomous_capital_usd'] == 0
+          assert p['unresolved_count'] > 0
+          assert p['oracle_payload_structurally_parsed'] is True
+          assert p['deterministic_pnl_verified'] is False
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p0-euphoria-accounting-001-evidence
+          path: evidence/p0-euphoria-accounting-001.json
+          if-no-files-found: error
+          retention-days: 90
