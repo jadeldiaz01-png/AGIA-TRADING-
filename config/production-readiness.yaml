@@ -54,8 +54,10 @@ accounting_evidence:
   usdm_transfer_accounting_implemented: true
   balance_update_decoding_implemented: true
   unknown_event_preservation_implemented: true
+  sampled_lifecycle_linkage_verified: true
+  sampled_lifecycle_amount_conservation_verified: true
+  historical_lifecycle_linkage_completeness_verified: false
   oracle_signer_policy_verified: false
-  lifecycle_linkage_verified: false
   gross_payout_formula_verified: false
   protocol_fee_formula_verified: false
   deterministic_pnl_verified: false
@@ -66,4 +68,5 @@ certification_contract:
   frozen_dataset_required: true
   verified_contract_graph_required: true
   deterministic_accounting_required: true
+  complete_historical_lifecycle_linkage_required: true
   human_approval_required_for_financial_execution: true
