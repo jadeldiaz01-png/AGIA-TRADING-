@@ -12,7 +12,6 @@ from .accounting import PROXY, parse_receipt_logs, parse_redstone_payload
 from .historical_lifecycle import BLOCKSCOUT_LOGS_RPC, INFLOW_EVENT, OUTFLOW_EVENT, RPC
 from .rpc import RpcClient
 
-DEFAULT_CENSORING_HORIZON_BLOCKS = 1_000
 MAX_RETRIES = 8
 BASE_PAUSE_SECONDS = 0.35
 
@@ -45,15 +44,15 @@ def _retry_delay(exc: Exception, attempt: int) -> float | None:
     return None
 
 
-def _call(rpc: RpcClient, method: str, params: list[Any], retries: int = MAX_RETRIES) -> Any:
-    for attempt in range(retries + 1):
+def _call(rpc: RpcClient, method: str, params: list[Any]) -> Any:
+    for attempt in range(MAX_RETRIES + 1):
         try:
             value = rpc.call(method, params)
             time.sleep(BASE_PAUSE_SECONDS)
             return value
         except Exception as exc:
             delay = _retry_delay(exc, attempt)
-            if delay is None or attempt >= retries:
+            if delay is None or attempt >= MAX_RETRIES:
                 raise
             time.sleep(delay)
     raise RuntimeError("unreachable")
@@ -107,7 +106,12 @@ def targeted_lifecycle_lookup(
     correlation_key: str,
     from_block: int,
     to_block: int,
+    cache_dir: Path,
 ) -> list[dict[str, Any]]:
+    cache_key = correlation_key.lower().removeprefix("0x")
+    cached = _cache_read(cache_dir, "targeted_logs", cache_key)
+    if cached is not None:
+        return cached
     result = _call(
         logs_rpc,
         "eth_getLogs",
@@ -122,6 +126,7 @@ def targeted_lifecycle_lookup(
     )
     logs = [_normalise_log(item) for item in result if not item.get("removed", False)]
     logs.sort(key=lambda item: (item["block_number"] or 0, item["log_index"] or 0))
+    _cache_write(cache_dir, "targeted_logs", cache_key, logs)
     return logs
 
 
@@ -130,9 +135,8 @@ def classify_exception(
     targeted_logs: list[dict[str, Any]],
     range_from: int,
     range_to: int,
-    censoring_horizon_blocks: int = DEFAULT_CENSORING_HORIZON_BLOCKS,
+    censoring_horizon_blocks: int,
 ) -> dict[str, Any]:
-    key = item["correlation_key"]
     openings = [log for log in targeted_logs if log.get("topic0") == INFLOW_EVENT]
     closings = [log for log in targeted_logs if log.get("topic0") == OUTFLOW_EVENT]
     original_openings = item.get("openings", [])
@@ -143,7 +147,7 @@ def classify_exception(
             "label": "INDEXING_DEFECT",
             "classification_verified": True,
             "structural_completeness_resolved": True,
-            "reason": "targeted historical lookup recovered both lifecycle event families for the correlation key",
+            "reason": "targeted historical lookup recovered both lifecycle event families",
         }
 
     if item.get("kind") == "OPENING_ONLY" and original_openings:
@@ -153,7 +157,7 @@ def classify_exception(
                 "label": "RIGHT_CENSORED",
                 "classification_verified": True,
                 "structural_completeness_resolved": True,
-                "reason": "opening lies within the explicit right-censoring horizon of the frozen tip",
+                "reason": "opening lies within the empirical right-censoring horizon",
             }
 
     if item.get("kind") == "CLOSING_ONLY" and original_closings:
@@ -163,26 +167,27 @@ def classify_exception(
                 "label": "LEFT_CENSORED",
                 "classification_verified": True,
                 "structural_completeness_resolved": True,
-                "reason": "closing lies within the explicit left-censoring horizon of the historical start",
+                "reason": "closing lies within the empirical left-censoring horizon",
             }
 
     expected_singleton = (
-        (item.get("kind") == "OPENING_ONLY" and len(openings) == 1 and not closings)
-        or (item.get("kind") == "CLOSING_ONLY" and len(closings) == 1 and not openings)
+        item.get("kind") == "OPENING_ONLY" and len(openings) == 1 and not closings
+    ) or (
+        item.get("kind") == "CLOSING_ONLY" and len(closings) == 1 and not openings
     )
     if expected_singleton:
         return {
             "label": "MISSING_COUNTERPART",
             "classification_verified": True,
             "structural_completeness_resolved": False,
-            "reason": "targeted full-range lookup confirms exactly one lifecycle event family outside censoring horizons",
+            "reason": "targeted full-range lookup confirms one lifecycle family outside censoring horizon",
         }
 
     return {
         "label": "UNKNOWN",
         "classification_verified": False,
         "structural_completeness_resolved": False,
-        "reason": "available deterministic evidence does not satisfy any adjudication rule",
+        "reason": "deterministic evidence does not satisfy an adjudication rule",
     }
 
 
@@ -206,24 +211,38 @@ def _transaction_bundle(
     tx_hash: str,
 ) -> dict[str, Any]:
     key = tx_hash.lower().removeprefix("0x")
-    tx = _cached_call(rpc, cache_dir, "transactions", key, "eth_getTransactionByHash", [tx_hash])
-    receipt = _cached_call(rpc, cache_dir, "receipts", key, "eth_getTransactionReceipt", [tx_hash])
+    tx = _cached_call(
+        rpc,
+        cache_dir,
+        "transactions",
+        key,
+        "eth_getTransactionByHash",
+        [tx_hash],
+    )
+    receipt = _cached_call(
+        rpc,
+        cache_dir,
+        "receipts",
+        key,
+        "eth_getTransactionReceipt",
+        [tx_hash],
+    )
     if tx is None or receipt is None:
         return {"tx_hash": tx_hash, "complete": False, "reason": "missing_transaction_or_receipt"}
 
     block_number = _hex_int(tx.get("blockNumber"))
-    block_key = str(block_number)
+    if block_number is None:
+        return {"tx_hash": tx_hash, "complete": False, "reason": "missing_block_number"}
     block = _cached_call(
         rpc,
         cache_dir,
         "blocks",
-        block_key,
+        str(block_number),
         "eth_getBlockByNumber",
-        [hex(int(block_number)), False],
+        [hex(block_number), False],
     )
     input_data = str(tx.get("input") or "0x").lower()
     parsed = parse_receipt_logs(receipt.get("logs", []))
-    redstone = parse_redstone_payload(input_data)
     euphoria_logs = [
         _normalise_log(log)
         for log in receipt.get("logs", [])
@@ -239,13 +258,13 @@ def _transaction_bundle(
         "to": str(tx.get("to", "")).lower(),
         "selector": input_data[:10] if len(input_data) >= 10 else input_data,
         "calldata_bytes": max((len(input_data) - 2) // 2, 0),
-        "implementation_era": _implementation_era(int(block_number)),
+        "implementation_era": _implementation_era(block_number),
         "usdm_in_raw": parsed["usdm_in_raw"],
         "usdm_out_raw": parsed["usdm_out_raw"],
         "usdm_transfers": parsed["usdm_transfers"],
         "balance_updates": parsed["balance_updates"],
         "euphoria_logs": euphoria_logs,
-        "redstone": redstone,
+        "redstone": parse_redstone_payload(input_data),
     }
 
 
@@ -254,7 +273,7 @@ def adjudicate(
     endpoint: str = RPC,
     logs_endpoint: str = BLOCKSCOUT_LOGS_RPC,
     cache_dir: Path = Path("evidence/cache/p0-euphoria-exceptions"),
-    censoring_horizon_blocks: int = DEFAULT_CENSORING_HORIZON_BLOCKS,
+    censoring_horizon_blocks: int = 0,
 ) -> dict[str, Any]:
     inventory = historical_evidence["exceptions"]["inventory"]
     range_from = int(historical_evidence["range"]["from_block"])
@@ -263,8 +282,21 @@ def adjudicate(
     if _digest(inventory) != expected_inventory_sha:
         raise RuntimeError("historical exception inventory SHA mismatch")
 
+    observed_max_delta = historical_evidence["structural"].get(
+        "matched_lifecycle_block_delta_max"
+    )
+    if censoring_horizon_blocks <= 0:
+        if observed_max_delta is None:
+            raise RuntimeError("cannot derive censoring horizon without matched lifecycle durations")
+        censoring_horizon_blocks = int(observed_max_delta)
+    if censoring_horizon_blocks < 0:
+        raise ValueError("censoring horizon must be non-negative")
+
     rpc = RpcClient(endpoint, user_agent="AGIA-TRADING-EXCEPTION-ADJUDICATION/1.0 read-only")
-    logs_rpc = RpcClient(logs_endpoint, user_agent="AGIA-TRADING-EXCEPTION-ADJUDICATION-INDEX/1.0 read-only")
+    logs_rpc = RpcClient(
+        logs_endpoint,
+        user_agent="AGIA-TRADING-EXCEPTION-ADJUDICATION-INDEX/1.0 read-only",
+    )
     rpc.verify_chain_id(4326)
     logs_rpc.verify_chain_id(4326)
 
@@ -275,8 +307,13 @@ def adjudicate(
     unclassified = 0
 
     for item in inventory:
-        key = item["correlation_key"]
-        targeted = targeted_lifecycle_lookup(logs_rpc, key, range_from, range_to)
+        targeted = targeted_lifecycle_lookup(
+            logs_rpc,
+            item["correlation_key"],
+            range_from,
+            range_to,
+            cache_dir,
+        )
         classification = classify_exception(
             item,
             targeted,
@@ -301,38 +338,40 @@ def adjudicate(
                 if event.get("transaction_hash")
             }
         )
-        bundles = [_transaction_bundle(rpc, cache_dir, tx_hash) for tx_hash in tx_hashes]
         results.append(
             {
-                "correlation_key": key,
+                "correlation_key": item["correlation_key"],
                 "original_kind": item.get("kind"),
                 "targeted_lifecycle_logs": targeted,
                 "classification": classification,
-                "transaction_bundles": bundles,
+                "transaction_bundles": [
+                    _transaction_bundle(rpc, cache_dir, tx_hash) for tx_hash in tx_hashes
+                ],
                 "economic_role_verified": False,
             }
         )
 
-    ledger_sha = _digest(results)
-    status = "PASS" if not inventory else "PARTIAL_EVIDENCE"
+    all_resolved = all(
+        item["classification"]["structural_completeness_resolved"] for item in results
+    )
+    pass_gate = unclassified == 0 and true_orphan_openings == 0 and true_orphan_closings == 0
     return {
         "gate": "P0-EUPHORIA-EXCEPTION-ADJUDICATION-001",
-        "status": status,
+        "status": "PASS" if pass_gate and all_resolved else "PARTIAL_EVIDENCE",
         "chain_id": 4326,
         "source_historical_gate": historical_evidence["gate"],
         "source_exception_inventory_sha256": expected_inventory_sha,
-        "adjudication_ledger_sha256": ledger_sha,
+        "adjudication_ledger_sha256": _digest(results),
         "range": {"from_block": range_from, "to_block": range_to},
         "censoring_horizon_blocks": censoring_horizon_blocks,
+        "censoring_horizon_basis": "max_observed_matched_lifecycle_block_delta",
         "exception_count": len(inventory),
         "label_counts": label_counts,
         "true_orphan_opening_count": true_orphan_openings,
         "true_orphan_closing_count": true_orphan_closings,
         "unclassified_exception_count": unclassified,
         "all_exceptions_classified": unclassified == 0,
-        "all_structural_exceptions_resolved": all(
-            item["classification"]["structural_completeness_resolved"] for item in results
-        ),
+        "all_structural_exceptions_resolved": all_resolved,
         "results": results,
         "economic_semantics_verified": False,
         "gross_payout_formula_verified": False,
@@ -352,8 +391,12 @@ def main() -> None:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--rpc", default=RPC)
     parser.add_argument("--logs-rpc", default=BLOCKSCOUT_LOGS_RPC)
-    parser.add_argument("--cache-dir", type=Path, default=Path("evidence/cache/p0-euphoria-exceptions"))
-    parser.add_argument("--censoring-horizon-blocks", type=int, default=DEFAULT_CENSORING_HORIZON_BLOCKS)
+    parser.add_argument(
+        "--cache-dir",
+        type=Path,
+        default=Path("evidence/cache/p0-euphoria-exceptions"),
+    )
+    parser.add_argument("--censoring-horizon-blocks", type=int, default=0)
     args = parser.parse_args()
     historical = json.loads(args.historical_evidence.read_text(encoding="utf-8"))
     evidence = adjudicate(
@@ -365,7 +408,12 @@ def main() -> None:
     )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(json.dumps({key: value for key, value in evidence.items() if key != "results"}, sort_keys=True))
+    print(
+        json.dumps(
+            {key: value for key, value in evidence.items() if key != "results"},
+            sort_keys=True,
+        )
+    )
 
 
 if __name__ == "__main__":
