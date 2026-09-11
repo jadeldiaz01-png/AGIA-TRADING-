@@ -24,7 +24,7 @@ jobs:
         run: |
           python -m agia_trading.euphoria_data.historical_lifecycle \
             --from-block 12116795 \
-            --max-enriched-pairs 64 \
+            --max-enriched-pairs 16 \
             --out evidence/p0-euphoria-historical-lifecycle-001.json
       - name: Prove fail-closed boundary
         run: |
@@ -33,6 +33,8 @@ jobs:
           p=json.load(open('evidence/p0-euphoria-historical-lifecycle-001.json'))
           assert p['chain_id'] == 4326
           assert p['range']['from_block'] == 12116795
+          assert p['sources']['historical_log_index'].startswith('https://megaeth.blockscout.com/')
+          assert p['sources']['authoritative_rpc'] == 'https://mainnet.megaeth.com/rpc'
           assert p['backfill_authorized'] is False
           assert p['paper_authorized'] is False
           assert p['testnet_authorized'] is False
