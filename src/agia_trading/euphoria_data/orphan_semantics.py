@@ -159,20 +159,28 @@ def _find_lifecycle_log(bundle: dict[str, Any], topic0: str) -> dict[str, Any] |
     return None
 
 
+def _lifecycle_event(result: dict[str, Any], topic0: str) -> dict[str, Any] | None:
+    for bundle in result.get("transaction_bundles", []):
+        if bundle.get("complete"):
+            event = _find_lifecycle_log(bundle, topic0)
+            if event:
+                return event
+    for log in result.get("targeted_lifecycle_logs", []):
+        if log.get("topic0") == topic0:
+            return log
+    return None
+
+
 def _participant_accounts(result: dict[str, Any]) -> list[str]:
-    bundles = [item for item in result.get("transaction_bundles", []) if item.get("complete")]
-    if not bundles:
-        return []
-    bundle = bundles[0]
     kind = result.get("original_kind")
     if kind == "OPENING_ONLY":
-        event = _find_lifecycle_log(bundle, INFLOW_EVENT)
+        event = _lifecycle_event(result, INFLOW_EVENT)
         if not event:
             return []
         accounts = [_topic_address(topic) for topic in event.get("topics", [])[2:4]]
         return sorted({account for account in accounts if account})
     if kind == "CLOSING_ONLY":
-        event = _find_lifecycle_log(bundle, OUTFLOW_EVENT)
+        event = _lifecycle_event(result, OUTFLOW_EVENT)
         if not event:
             return []
         topics = event.get("topics", [])
@@ -182,10 +190,15 @@ def _participant_accounts(result: dict[str, Any]) -> list[str]:
 
 
 def _origin_block(result: dict[str, Any]) -> int | None:
-    bundles = [item for item in result.get("transaction_bundles", []) if item.get("complete")]
-    if not bundles:
-        return None
-    return _hex_int(bundles[0].get("block_number"))
+    for bundle in result.get("transaction_bundles", []):
+        if bundle.get("complete"):
+            block = _hex_int(bundle.get("block_number"))
+            if block is not None:
+                return block
+    kind = result.get("original_kind")
+    topic0 = INFLOW_EVENT if kind == "OPENING_ONLY" else OUTFLOW_EVENT
+    event = _lifecycle_event(result, topic0)
+    return _hex_int(event.get("block_number")) if event else None
 
 
 def _candidate_record(
@@ -279,6 +292,8 @@ def profile_orphans(
     for result in exception_evidence.get("results", []):
         if result.get("classification", {}).get("label") != "MISSING_COUNTERPART":
             continue
+        participants = _participant_accounts(result)
+        origin_block = _origin_block(result)
         candidates = _counterpart_candidates(
             rpc,
             result,
@@ -294,8 +309,9 @@ def profile_orphans(
             {
                 "correlation_key": result["correlation_key"],
                 "original_kind": result["original_kind"],
-                "origin_block": _origin_block(result),
-                "participants": _participant_accounts(result),
+                "origin_block": origin_block,
+                "participants": participants,
+                "source_context_complete": origin_block is not None and bool(participants),
                 "cross_key_candidate_count": len(candidates),
                 "cross_key_candidate_within_normal_horizon_count": len(within_normal),
                 "nearest_cross_key_candidates": candidates[:20],
@@ -311,6 +327,7 @@ def profile_orphans(
     rows_with_near_candidates = [
         item for item in rows if item["cross_key_candidate_within_normal_horizon_count"] > 0
     ]
+    incomplete_context = [item for item in rows if not item["source_context_complete"]]
     ledger_sha = _digest(rows)
     return {
         "gate": "P0-EUPHORIA-ORPHAN-SEMANTICS-001",
@@ -323,6 +340,7 @@ def profile_orphans(
         "true_orphan_count": len(rows),
         "true_orphan_opening_count": len(opening_rows),
         "true_orphan_closing_count": len(closing_rows),
+        "source_context_incomplete_count": len(incomplete_context),
         "orphans_with_cross_key_candidates": len(rows_with_candidates),
         "orphans_with_cross_key_candidates_within_normal_horizon": len(rows_with_near_candidates),
         "semantic_unknown_count": len(rows),
