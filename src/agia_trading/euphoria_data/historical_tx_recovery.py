@@ -137,7 +137,7 @@ def _validate_case(
 
     to_values = {
         str(legacy_result.get("to", "")).lower(),
-        str(((v2_tx.get("to") or {}).get("hash", ""))).lower()
+        str((v2_tx.get("to") or {}).get("hash", "")).lower()
         if isinstance(v2_tx, dict) and isinstance(v2_tx.get("to"), dict)
         else str(v2_tx.get("to", "")).lower() if isinstance(v2_tx, dict) else "",
     }
