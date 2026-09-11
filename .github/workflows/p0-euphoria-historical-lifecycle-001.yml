@@ -191,3 +191,63 @@ jobs:
             evidence/cache/p0-euphoria-exceptions
           if-no-files-found: warn
           retention-days: 90
+
+  orphan-semantic-evidence:
+    needs: exception-adjudication-evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install project
+        run: pip install -e '.[dev]'
+      - name: Unit tests for orphan semantic profiler
+        run: pytest -q tests/test_orphan_semantics.py
+      - uses: actions/download-artifact@v4
+        with:
+          name: p0-euphoria-exception-adjudication-001-evidence
+          path: evidence/source
+      - uses: actions/cache@v4
+        with:
+          path: evidence/cache/p0-euphoria-orphan-semantics
+          key: euphoria-orphan-semantics-${{ github.event.pull_request.head.sha || github.sha }}
+          restore-keys: |
+            euphoria-orphan-semantics-
+      - name: Search participant-linked cross-key lifecycle candidates
+        run: |
+          python -m agia_trading.euphoria_data.orphan_semantics \
+            --exception-evidence evidence/source/p0-euphoria-exception-adjudication-001.json \
+            --out evidence/p0-euphoria-orphan-semantics-001.json \
+            --search-horizon-blocks 10000
+      - name: Prove semantic profiler remains fail-closed
+        run: |
+          python - <<'PY'
+          import json
+          p=json.load(open('evidence/p0-euphoria-orphan-semantics-001.json'))
+          assert p['chain_id'] == 4326
+          assert p['semantic_ledger_sha256']
+          assert p['true_orphan_count'] == p['true_orphan_opening_count'] + p['true_orphan_closing_count']
+          assert p['semantic_unknown_count'] == p['true_orphan_count']
+          assert p['economic_semantics_verified'] is False
+          assert p['gross_payout_formula_verified'] is False
+          assert p['protocol_fee_formula_verified'] is False
+          assert p['deterministic_pnl_verified'] is False
+          assert p['backfill_authorized'] is False
+          assert p['strategy_research_authorized'] is False
+          assert p['paper_authorized'] is False
+          assert p['testnet_authorized'] is False
+          assert p['limited_pilot_authorized'] is False
+          assert p['live_authorized'] is False
+          assert p['max_autonomous_capital_usd'] == 0
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p0-euphoria-orphan-semantics-001-evidence
+          path: |
+            evidence/p0-euphoria-orphan-semantics-001.json
+            evidence/cache/p0-euphoria-orphan-semantics
+          if-no-files-found: warn
+          retention-days: 90
