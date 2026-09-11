@@ -165,6 +165,19 @@ def aggregate_shards(
         raise RuntimeError(f"unexpected lifecycle topics: {unexpected_topics}")
 
     structural = build_structural_index(openings, closings)
+    ordered_block_deltas = sorted(
+        int(pair["block_delta"])
+        for pair in structural["pairs"]
+        if pair.get("ordered") and int(pair["block_delta"]) >= 0
+    )
+    structural_summary = {key: value for key, value in structural.items() if key != "pairs"}
+    structural_summary["matched_lifecycle_block_delta_min"] = (
+        ordered_block_deltas[0] if ordered_block_deltas else None
+    )
+    structural_summary["matched_lifecycle_block_delta_max"] = (
+        ordered_block_deltas[-1] if ordered_block_deltas else None
+    )
+
     exceptions = _exception_inventory(openings, closings)
     exception_counts: dict[str, int] = {}
     for item in exceptions:
@@ -230,7 +243,7 @@ def aggregate_shards(
             "manifest_sha256": _digest(shard_manifest),
             "manifest": shard_manifest,
         },
-        "structural": {key: value for key, value in structural.items() if key != "pairs"},
+        "structural": structural_summary,
         "exceptions": {
             "count": len(exceptions),
             "counts_by_kind": exception_counts,
