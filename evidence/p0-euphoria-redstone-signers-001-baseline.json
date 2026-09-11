@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0.0",
+  "gate": "P0-EUPHORIA-REDSTONE-SIGNERS-001",
+  "status": "PARTIAL_EVIDENCE",
+  "chain_id": 4326,
+  "proxy": "0x12759afca690637b425ffba3265f0dc2f6242a8d",
+  "source_endpoint": "https://mainnet.megaeth.com/rpc",
+  "evidence_run": {
+    "workflow_run_id": 34547597924,
+    "artifact_id": 10179609934,
+    "artifact_digest": "sha256:6104afcdd6120c6571c193832e674b65f0b576659d1f3babb8a16c39d94efb49"
+  },
+  "policy_interface": {
+    "getUniqueSignersThreshold()": "0xf90c4924",
+    "getAuthorisedSignerIndex(address)": "0x3ce142f5",
+    "getDataServiceId()": "0xc274583a"
+  },
+  "unique_signers_threshold": 1,
+  "sample_signer_policy_verified": true,
+  "observed_authorised_signers": [
+    {
+      "address": "0x6a4d1b2fc6a894928979f152a8c9245d96860604",
+      "signer_index": 2
+    },
+    {
+      "address": "0xbbd80bef77fd96b1d7d5db0614af5cb7b3d1d71f",
+      "signer_index": 4
+    }
+  ],
+  "data_service_id": null,
+  "data_service_id_status": "NOT_EXPOSED_OR_REVERTED",
+  "historical_signer_policy_completeness_verified": false,
+  "backfill_authorized": false,
+  "live_authorized": false,
+  "max_autonomous_capital_usd": 0
+}
