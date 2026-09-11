@@ -5,7 +5,7 @@ from agia_trading.euphoria_data.adjudicate_semantics import (
 
 
 def test_target_selectors_are_exact() -> None:
-    assert FUNCTION_SELECTORS == ["0x21d5c9bb", "0x93ca625d"]
+    assert list(FUNCTION_SELECTORS) == ["0x21d5c9bb", "0x93ca625d"]
 
 
 def test_target_event_topics_are_exact() -> None:
