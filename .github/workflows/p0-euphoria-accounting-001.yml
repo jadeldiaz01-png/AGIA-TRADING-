@@ -17,12 +17,17 @@ jobs:
           python-version: '3.12'
       - name: Install project
         run: pip install -e '.[dev]'
-      - name: Unit tests for accounting parser
-        run: pytest -q tests/test_euphoria_accounting.py
+      - name: Unit tests for accounting and lifecycle parsers
+        run: |
+          pytest -q tests/test_euphoria_accounting.py tests/test_euphoria_lifecycle.py
       - name: Collect read-only accounting evidence
         run: |
           python -m agia_trading.euphoria_data.accounting \
             --out evidence/p0-euphoria-accounting-001.json
+      - name: Derive semantic-neutral sample lifecycle links
+        run: |
+          python -m agia_trading.euphoria_data.lifecycle \
+            --evidence evidence/p0-euphoria-accounting-001.json
       - name: Prove fail-closed accounting boundary
         run: |
           python - <<'PY'
@@ -35,6 +40,9 @@ jobs:
           assert p['max_autonomous_capital_usd'] == 0
           assert p['unresolved_count'] > 0
           assert p['oracle_payload_structurally_parsed'] is True
+          assert p['sample_lifecycle_linkage_verified'] is True
+          assert p['sample_lifecycle_pair_count'] > 0
+          assert all(x['economic_role_verified'] is False for x in p['sample_lifecycle_pairs'])
           assert p['deterministic_pnl_verified'] is False
           PY
       - uses: actions/upload-artifact@v4
