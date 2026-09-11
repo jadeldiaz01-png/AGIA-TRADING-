@@ -87,19 +87,18 @@ jobs:
       - name: Install project
         run: pip install -e '.[dev]'
       - name: Unit tests for historical lifecycle indexer
-        run: pytest -q tests/test_historical_lifecycle.py
+        run: pytest -q tests/test_historical_lifecycle.py tests/test_historical_shards.py
       - uses: actions/download-artifact@v4
         with:
           pattern: p0-euphoria-historical-shard-*
           path: evidence/shards
           merge-multiple: true
-      - name: Aggregate shards and verify historical coverage
+      - name: Aggregate shards and verify structural historical coverage
         run: |
           python -m agia_trading.euphoria_data.historical_shards aggregate \
             --shards evidence/shards \
             --expected-from 12116795 \
             --expected-to ${{ needs.prepare-historical-shards.outputs.latest }} \
-            --max-enriched-pairs 16 \
             --out evidence/p0-euphoria-historical-lifecycle-001.json
       - name: Prove fail-closed boundary
         run: |
@@ -110,9 +109,12 @@ jobs:
           assert p['range']['from_block'] == 12116795
           assert p['range']['to_block'] == int('${{ needs.prepare-historical-shards.outputs.latest }}')
           assert p['sources']['historical_log_index'].startswith('https://megaeth.blockscout.com/')
-          assert p['sources']['authoritative_rpc'] == 'https://mainnet.megaeth.com/rpc'
+          assert p['sources']['economic_authoritative_rpc'] == 'https://mainnet.megaeth.com/rpc'
           assert p['sharding']['coverage_gap_or_overlap_count'] == 0
           assert p['sharding']['duplicate_log_count'] == 0
+          assert p['economic_coverage']['status'] == 'NOT_EVALUATED'
+          assert p['economic_coverage']['coverage_pair_count'] == 0
+          assert p['historical_economic_coverage_verified'] is False
           assert p['backfill_authorized'] is False
           assert p['paper_authorized'] is False
           assert p['testnet_authorized'] is False
