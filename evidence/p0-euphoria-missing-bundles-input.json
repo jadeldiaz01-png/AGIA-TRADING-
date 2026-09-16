@@ -1,0 +1,36 @@
+{
+  "gate": "P0-EUPHORIA-HISTORICAL-TX-RECOVERY-001",
+  "chain_id": 4326,
+  "primary_rpc": "https://mainnet.megaeth.com/rpc",
+  "secondary_index": "https://megaeth.blockscout.com",
+  "cases": [
+    {
+      "kind": "CLOSING_ONLY",
+      "correlation_key": "0xb986a3a10121ba7c0e4ef8c395759fef19090ebc000000000000000000000000",
+      "tx_hash": "0x424c10dddc08205005a39bd04b5a4f4e990f7ded80e51c1da3e2472f4c407bbc",
+      "block_number": 23423580,
+      "expected_topic0": "0x90cacdb710d0777a8e5fb6387c414be82e2ffe362a703077117a2a995fce12c1"
+    },
+    {
+      "kind": "OPENING_ONLY",
+      "correlation_key": "0xde7bc33a045dc4079cfc6749cb468945a1cd4c4f000000000000000000000000",
+      "tx_hash": "0x0595a77b8e4dc0a24098f0faf966fe4133bd7d96e547fddd5f588c7d3251555f",
+      "block_number": 18307242,
+      "expected_topic0": "0x9f039a0ca58d6157d7b6914e2d60cedacf65fea21a365e93d708a5e5c25454f3"
+    },
+    {
+      "kind": "OPENING_ONLY",
+      "correlation_key": "0xe1bcf55fa90754da6c6d175dbfe6a9864d91b500000000000000000000000000",
+      "tx_hash": "0xa9ddc6cacf4612f44c3d3cdab82bd7bf1b65311878a82027a17c733bdf8edf4a",
+      "block_number": 23389443,
+      "expected_topic0": "0x9f039a0ca58d6157d7b6914e2d60cedacf65fea21a365e93d708a5e5c25454f3"
+    },
+    {
+      "kind": "CLOSING_ONLY",
+      "correlation_key": "0xfc356c296d4dcb92d22916cc57b664ee0150d1a1000000000000000000000000",
+      "tx_hash": "0xb7d521b1d20a59178ed67fbd3896a9fc9608f637181ec7d6a0e6e36c1721aac1",
+      "block_number": 23423580,
+      "expected_topic0": "0x90cacdb710d0777a8e5fb6387c414be82e2ffe362a703077117a2a995fce12c1"
+    }
+  ]
+}
