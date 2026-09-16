@@ -51,7 +51,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 1
       matrix: ${{ fromJSON(needs.prepare-historical-shards.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
