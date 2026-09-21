@@ -37,7 +37,7 @@ jobs:
         if: always()
         with:
           name: iqros-atvf-real-evidence
-          path: |
-            evidence/iqros-atvf-real-market-manifest.json
+          path: evidence/iqros-atvf-real-market-manifest.json
           if-no-files-found: error
           retention-days: 90
+# trigger certification after workflow registration
