@@ -1,0 +1,75 @@
+{
+  "schema": "iqros.atvf.real-evidence.adjudication.v1",
+  "source_run_id": 35551948308,
+  "source_artifact_id": 10618523569,
+  "source_commit": "df0d2d8f7e998c455c17d2858ed891f1d2846522",
+  "artifact_zip_sha256": "0ad857697503f0d2e2066977c0a29397aa3f5298f13cfcbc1ed48a28d8e98374",
+  "manifest_file_sha256": "ad0c7af2b08a0d1e2ebe29c0fcac29c39388e351f5c4478c2f908f46571a40d7",
+  "manifest_canonical_sha256": "242d86402a374c7912fabd0aacf340c1812aee50c7ba0adf6efa859d01087c19",
+  "data": {
+    "BTCUSDT": {
+      "rows": 12654,
+      "dataset_sha256": "04264612e9dc06027c62178dcc44f697316ec5f7a1ea4d0824572e61977f2798",
+      "quality": "PASS_WITH_3_DOCUMENTED_EXCHANGE_HALTS"
+    },
+    "ETHUSDT": {
+      "rows": 12654,
+      "dataset_sha256": "2e534470eb52daf72e0a5b1504faa24e123e72e39a10ce558403b90e7f5120ac",
+      "quality": "PASS_WITH_3_DOCUMENTED_EXCHANGE_HALTS"
+    }
+  },
+  "protocol": {
+    "market": "BINANCE_SPOT",
+    "timeframe": "6h",
+    "periods_per_year": 1460,
+    "window": "2018-01..2026-08",
+    "trial_budget": 32,
+    "train": "60%",
+    "validation": "20%",
+    "oos": "final 20% frozen",
+    "shorting": "disabled; long/flat only",
+    "cost_stress_bps": [
+      5,
+      10,
+      15,
+      20,
+      30,
+      50
+    ],
+    "walk_forward_folds": 4
+  },
+  "results": {
+    "BTCUSDT": {
+      "verdict": "FAIL",
+      "oos_net_pnl": 286.2118433690637,
+      "oos_annualized_return": 0.15662367584657177,
+      "oos_sharpe": 2.4108610319254504,
+      "oos_max_drawdown": 0.024826589943577875,
+      "dsr_probability": 0.901469129197332,
+      "pbo": 0,
+      "bootstrap_positive_probability": 1,
+      "ruin_probability_30pct": 0,
+      "failed_gates": [
+        "DSR",
+        "REGIME_NONCONCENTRATION"
+      ]
+    },
+    "ETHUSDT": {
+      "verdict": "PASS",
+      "oos_net_pnl": 352.69715125628295,
+      "oos_annualized_return": 0.1906943037820863,
+      "oos_sharpe": 2.665967273316516,
+      "oos_max_drawdown": 0.03669149540269129,
+      "dsr_probability": 0.9647721740940246,
+      "pbo": 0.08571428571428572,
+      "bootstrap_positive_probability": 0.9996,
+      "ruin_probability_30pct": 0,
+      "failed_gates": []
+    }
+  },
+  "aggregate_verdict": "FAIL",
+  "historical_evidence_pass": false,
+  "forward_paper_started": false,
+  "real_money_authorized": false,
+  "adjudication": "REJECT_CURRENT_AGGREGATE_CANDIDATE_NO_OOS_RETUNING"
+}
