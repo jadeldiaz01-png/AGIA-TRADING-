@@ -174,7 +174,8 @@ def main():
     cache=Path(a.cache); cache.mkdir(parents=True,exist_ok=True); datasets=[]; results=[]
     for sym in ["BTCUSDT","ETHUSDT"]:
         d,meta=download(sym,a.start,a.end,cache)
-        print(json.dumps({"symbol":sym,"quality":meta["quality"]},indent=2));\n        if not meta["quality"]["valid"]: raise SystemExit(f"{sym} DATA_QUALITY_FAIL")
+        print(json.dumps({"symbol":sym,"quality":meta["quality"]},indent=2));
+        if not meta["quality"]["valid"]: raise SystemExit(f"{sym} DATA_QUALITY_FAIL")
         datasets.append(meta); results.append(validate(d,sym))
     aggregate="PASS" if all(x["verdict"]=="PASS" for x in results) else "FAIL"
     doc={"schema":"iqros.atvf.real-evidence.v2","strategy":"IQROS_ATVF_v1_SPOT_LONG_FLAT","market":"BINANCE_SPOT","timeframe":"6h","periods_per_year":1460,"preregistered_window":{"start":a.start,"end":a.end},"selection":"TRAIN_ONLY_60pct","validation":"20pct","oos":"FINAL_20pct_FROZEN","trial_budget":32,"execution":"signal_close_t_to_open_t+1","shorting":"DISABLED_FOR_SPOT","datasets":datasets,"results":results,"aggregate_verdict":aggregate,"historical_evidence_pass":aggregate=="PASS","forward_paper_required":aggregate=="PASS","real_money_authorized":False}
