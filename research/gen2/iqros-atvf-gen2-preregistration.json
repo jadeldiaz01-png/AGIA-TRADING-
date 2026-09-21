@@ -1,0 +1,140 @@
+{
+  "schema_version": "1.0",
+  "experiment_id": "IQROS_ATVF_GEN2_2026Q4",
+  "generation": 2,
+  "status": "PREREGISTERED_NOT_STARTED",
+  "parent_evidence": {
+    "generation": 1,
+    "aggregate_verdict": "FAIL",
+    "immutable_adjudication_path": "evidence/iqros-atvf-real-market-adjudication.json",
+    "observed_through": "2026-08-31T18:00:00Z",
+    "reuse_as_new_holdout": "PROHIBITED"
+  },
+  "scientific_hypotheses": [
+    {
+      "id": "H1",
+      "statement": "A long/flat multi-horizon trend signal with volatility scaling can retain positive net expectancy on future Binance Spot data after explicit costs.",
+      "falsifier": "Prospective holdout net expectancy <= 0 or DSR gate fails."
+    },
+    {
+      "id": "H2",
+      "statement": "Adding a preregistered trend-quality/regime persistence filter reduces concentration without destroying net expectancy.",
+      "falsifier": "Regime non-concentration fails or robustness deteriorates beyond preregistered limits."
+    },
+    {
+      "id": "H3",
+      "statement": "The edge is not dependent on one asset.",
+      "falsifier": "Cross-asset breadth gate fails under the preregistered universe."
+    }
+  ],
+  "market": {
+    "venue": "BINANCE_SPOT",
+    "execution": "LONG_FLAT_ONLY",
+    "bar_intervals": [
+      "4h",
+      "6h",
+      "8h",
+      "12h"
+    ],
+    "data_source": "binance-public-data",
+    "checksums_required": true
+  },
+  "universe": {
+    "development": [
+      "BTCUSDT",
+      "ETHUSDT",
+      "BNBUSDT",
+      "SOLUSDT",
+      "XRPUSDT"
+    ],
+    "eligibility": "listed before development cutoff; sufficient continuity/liquidity; rule frozen before first trial"
+  },
+  "temporal_design": {
+    "contaminated_history_end": "2026-08-31T23:59:59Z",
+    "development_window_end": "2026-08-31T23:59:59Z",
+    "prospective_shadow_start": "2026-09-01T00:00:00Z",
+    "prospective_holdout_start": "2026-10-01T00:00:00Z",
+    "prospective_holdout_minimum_days": 90,
+    "prospective_holdout_minimum_bars_per_6h_equivalent": 360,
+    "holdout_access_policy": "WRITE_ONCE_DATASET_HASHES; NO_PARAMETER_CHANGES_AFTER_FIRST_HOLDOUT_INGEST",
+    "note": "Gen-1-observed history may be used only for development/nested validation, never relabeled as a fresh holdout."
+  },
+  "trial_budget": {
+    "maximum_total_trials": 48,
+    "families": [
+      {
+        "name": "ATVF_BASELINE_REIMPLEMENTATION",
+        "max_trials": 1
+      },
+      {
+        "name": "ATVF_TREND_QUALITY_FILTER",
+        "max_trials": 16
+      },
+      {
+        "name": "ATVF_REGIME_PERSISTENCE",
+        "max_trials": 16
+      },
+      {
+        "name": "ATVF_PORTFOLIO_BREADTH",
+        "max_trials": 15
+      }
+    ],
+    "adaptive_budget_extension": "PROHIBITED",
+    "post_holdout_retuning": "PROHIBITED"
+  },
+  "selection": {
+    "method": "NESTED_WALK_FORWARD_ON_DEVELOPMENT_ONLY",
+    "objective": "net_return + risk_adjusted_return - drawdown_penalty - turnover_penalty",
+    "multiplicity_correction": "DEFLECTED_SHARPE_RATIO_USING_ALL_ATTEMPTED_TRIALS",
+    "pbo": "CSCV_ON_CAUSAL_STRATEGY_RETURNS",
+    "trial_ledger_required": true
+  },
+  "cost_model": {
+    "baseline_bps_round_trip_assumption": 10,
+    "stress_bps": [
+      5,
+      10,
+      15,
+      20,
+      30,
+      50
+    ],
+    "include": [
+      "fees",
+      "spread_proxy",
+      "slippage_proxy"
+    ],
+    "funding": "NOT_APPLICABLE_SPOT_LONG_FLAT",
+    "borrow": "NOT_APPLICABLE_SPOT_LONG_FLAT"
+  },
+  "promotion_gates": {
+    "DATA_QUALITY": "PASS",
+    "NO_LOOKAHEAD": "PASS",
+    "TRIAL_LEDGER_COMPLETE": "PASS",
+    "DEVELOPMENT_NESTED_WF": "PASS",
+    "PROSPECTIVE_HOLDOUT_NET_POSITIVE": "PASS",
+    "DSR_MIN_PROBABILITY": 0.95,
+    "PBO_MAX": 0.25,
+    "BOOTSTRAP_POSITIVE_MIN": 0.9,
+    "RUIN_30PCT_MAX": 0.05,
+    "COST_STRESS_20BPS_NET_POSITIVE": true,
+    "PARAMETER_STABILITY_MIN_POSITIVE_FRACTION": 0.75,
+    "REGIME_NONCONCENTRATION_MIN_POSITIVE_REGIMES": 2,
+    "CROSS_ASSET_BREADTH_MIN_PASSING_ASSETS": 3,
+    "MAX_DRAWDOWN_MAX": 0.2
+  },
+  "forward_policy": {
+    "paper_allowed_only_after_all_historical_and_prospective_gates_pass": true,
+    "minimum_forward_paper_days": 30,
+    "reconciliation_required": true,
+    "real_money_authorized": false,
+    "human_approval_required_after_forward": true
+  },
+  "governance": {
+    "gen1_evidence_mutable": false,
+    "fail_closed": true,
+    "parameter_change_after_holdout": "NEW_GENERATION_REQUIRED",
+    "signed_manifest_required_for_promotion": true,
+    "live_trading_enabled": false
+  }
+}
