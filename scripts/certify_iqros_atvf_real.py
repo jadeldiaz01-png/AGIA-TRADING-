@@ -7,6 +7,11 @@ import pandas as pd
 from scipy.stats import norm
 
 PER_YEAR=1460
+DOCUMENTED_HALTS={
+ "2018-02-09T06:00:00+00:00":"https://www.binance.com/en/support/announcement/detail/360000737572",
+ "2018-06-26T12:00:00+00:00":"https://www.binance.com/en/support/announcement/detail/360005098352",
+ "2019-05-15T12:00:00+00:00":"https://www.binance.com/en/support/announcement/detail/360028054052",
+}
 COLS=["open_time","open","high","low","close","volume","close_time","quote_volume","trades","taker_buy_base","taker_buy_quote","ignore"]
 
 @dataclass(frozen=True)
@@ -54,8 +59,10 @@ def download(symbol,start,end,cache):
     duplicates=int(d.index.duplicated().sum()); d=d[~d.index.duplicated(keep="last")]
     invalid=int(((d.high<d[["open","close","low"]].max(axis=1))|(d.low>d[["open","close","high"]].min(axis=1))|(d.low<=0)).sum())
     diffs=d.index.to_series().diff().dropna(); gap_mask=diffs!=pd.Timedelta(hours=6); gaps=int(gap_mask.sum()); gap_examples=[{"at":x.isoformat(),"delta":str(diffs.loc[x])} for x in diffs.index[gap_mask][:20]]
-    quality={"rows":len(d),"duplicates":duplicates,"invalid_ohlc":invalid,"gaps":gaps,"start":d.index[0].isoformat(),"end":d.index[-1].isoformat(),"gap_examples":gap_examples}
-    quality["valid"]=duplicates==0 and invalid==0 and gaps==0
+    documented=[{"at":x["at"],"source":DOCUMENTED_HALTS[x["at"]]} for x in gap_examples if x["at"] in DOCUMENTED_HALTS]
+    undocumented=[x for x in gap_examples if x["at"] not in DOCUMENTED_HALTS]
+    quality={"rows":len(d),"duplicates":duplicates,"invalid_ohlc":invalid,"gaps":gaps,"documented_exchange_halts":documented,"undocumented_gaps":undocumented,"start":d.index[0].isoformat(),"end":d.index[-1].isoformat(),"gap_examples":gap_examples}
+    quality["valid"]=duplicates==0 and invalid==0 and len(undocumented)==0
     digest=hashlib.sha256(pd.util.hash_pandas_object(d,index=True).values.tobytes()).hexdigest()
     return d,{"symbol":symbol,"dataset_sha256":digest,"quality":quality,"archives":provenance}
 
