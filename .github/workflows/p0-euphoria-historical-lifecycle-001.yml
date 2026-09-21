@@ -60,9 +60,15 @@ jobs:
           python-version: '3.12'
       - name: Install project
         run: pip install -e '.[dev]'
+      - uses: actions/cache@v4
+        with:
+          path: evidence/checkpoints/historical
+          key: euphoria-historical-rpc-v2-${{ matrix.index }}-${{ matrix.from_block }}-${{ matrix.to_block }}
       - name: Scan immutable historical shard
+        env:
+          AGIA_HISTORICAL_CHECKPOINT_DIR: evidence/checkpoints/historical
         run: |
-          mkdir -p evidence/shards
+          mkdir -p evidence/shards evidence/checkpoints/historical
           python -m agia_trading.euphoria_data.historical_shards scan \
             --index ${{ matrix.index }} \
             --from-block ${{ matrix.from_block }} \
