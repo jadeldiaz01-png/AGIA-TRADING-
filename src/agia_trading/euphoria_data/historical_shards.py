@@ -13,7 +13,7 @@ from .historical_lifecycle import (
     adaptive_get_logs,
     build_structural_index,
 )
-from .rpc import RpcClient
+from .rpc import RpcClient\nfrom .rpc_resilience_v2 import adaptive_get_logs
 
 
 def _canonical_bytes(value: object) -> bytes:
