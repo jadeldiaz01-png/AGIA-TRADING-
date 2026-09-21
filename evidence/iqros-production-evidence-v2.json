@@ -1,0 +1,9 @@
+{
+  "schema": "iqros.production-evidence.v2",
+  "strategy": "IQROS_ATVF_v1",
+  "status": "UNPROVEN",
+  "production_ready": false,
+  "real_money_authorized": false,
+  "blocking_reason": "Real point-in-time OOS, forward-PAPER, reconciliation, DSR/PBO and signed supply-chain evidence are not yet complete.",
+  "required_gates": 29
+}
