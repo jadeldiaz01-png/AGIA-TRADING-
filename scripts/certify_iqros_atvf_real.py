@@ -53,8 +53,8 @@ def download(symbol,start,end,cache):
     d["open_time"]=d["open_time"].map(epoch); d=d.set_index("open_time").sort_index()
     duplicates=int(d.index.duplicated().sum()); d=d[~d.index.duplicated(keep="last")]
     invalid=int(((d.high<d[["open","close","low"]].max(axis=1))|(d.low>d[["open","close","high"]].min(axis=1))|(d.low<=0)).sum())
-    gaps=int((d.index.to_series().diff().dropna()!=pd.Timedelta(hours=6)).sum())
-    quality={"rows":len(d),"duplicates":duplicates,"invalid_ohlc":invalid,"gaps":gaps,"start":d.index[0].isoformat(),"end":d.index[-1].isoformat()}
+    diffs=d.index.to_series().diff().dropna(); gap_mask=diffs!=pd.Timedelta(hours=6); gaps=int(gap_mask.sum()); gap_examples=[{"at":x.isoformat(),"delta":str(diffs.loc[x])} for x in diffs.index[gap_mask][:20]]
+    quality={"rows":len(d),"duplicates":duplicates,"invalid_ohlc":invalid,"gaps":gaps,"start":d.index[0].isoformat(),"end":d.index[-1].isoformat(),"gap_examples":gap_examples}
     quality["valid"]=duplicates==0 and invalid==0 and gaps==0
     digest=hashlib.sha256(pd.util.hash_pandas_object(d,index=True).values.tobytes()).hexdigest()
     return d,{"symbol":symbol,"dataset_sha256":digest,"quality":quality,"archives":provenance}
@@ -174,7 +174,7 @@ def main():
     cache=Path(a.cache); cache.mkdir(parents=True,exist_ok=True); datasets=[]; results=[]
     for sym in ["BTCUSDT","ETHUSDT"]:
         d,meta=download(sym,a.start,a.end,cache)
-        if not meta["quality"]["valid"]: raise SystemExit(f"{sym} DATA_QUALITY_FAIL")
+        print(json.dumps({"symbol":sym,"quality":meta["quality"]},indent=2));\n        if not meta["quality"]["valid"]: raise SystemExit(f"{sym} DATA_QUALITY_FAIL")
         datasets.append(meta); results.append(validate(d,sym))
     aggregate="PASS" if all(x["verdict"]=="PASS" for x in results) else "FAIL"
     doc={"schema":"iqros.atvf.real-evidence.v2","strategy":"IQROS_ATVF_v1_SPOT_LONG_FLAT","market":"BINANCE_SPOT","timeframe":"6h","periods_per_year":1460,"preregistered_window":{"start":a.start,"end":a.end},"selection":"TRAIN_ONLY_60pct","validation":"20pct","oos":"FINAL_20pct_FROZEN","trial_budget":32,"execution":"signal_close_t_to_open_t+1","shorting":"DISABLED_FOR_SPOT","datasets":datasets,"results":results,"aggregate_verdict":aggregate,"historical_evidence_pass":aggregate=="PASS","forward_paper_required":aggregate=="PASS","real_money_authorized":False}
