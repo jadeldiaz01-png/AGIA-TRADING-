@@ -1,0 +1,43 @@
+name: iqros-atvf-real-evidence
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/iqros-v0.5-production-evidence]
+    paths:
+      - scripts/certify_iqros_atvf_real.py
+      - .github/workflows/iqros-atvf-real-evidence.yml
+permissions:
+  contents: read
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install pinned research runtime
+        run: pip install 'numpy>=1.26,<3' 'pandas>=2.2,<4' 'scipy>=1.13,<2'
+      - name: Execute preregistered real-market certification
+        run: python scripts/certify_iqros_atvf_real.py --start 2018-01 --end 2026-08 --out evidence/iqros-atvf-real-market-manifest.json
+      - name: Verify capital remains fail-closed
+        run: |
+          python - <<'PY'
+          import json
+          p='evidence/iqros-atvf-real-market-manifest.json'
+          d=json.load(open(p))
+          assert d['real_money_authorized'] is False
+          assert d['periods_per_year']==1460
+          assert d['shorting']=='DISABLED_FOR_SPOT'
+          assert len(d['datasets'])==2
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: iqros-atvf-real-evidence
+          path: |
+            evidence/iqros-atvf-real-market-manifest.json
+          if-no-files-found: error
+          retention-days: 90
