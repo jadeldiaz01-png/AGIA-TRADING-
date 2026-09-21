@@ -123,15 +123,24 @@ def dsr_probability(returns,trials):
     return float(norm.cdf(z))
 
 def pbo_cscv(pre_oos,cs,blocks=8):
-    idx=np.array_split(np.arange(len(pre_oos)),blocks); logits=[]
+    # CSCV is performed on causal full-history strategy returns; never concatenate
+    # raw non-contiguous price blocks, which would create artificial boundary returns.
+    matrix=[]
+    for cfg in cs:
+        r=np.asarray(simulate(pre_oos,cfg)["returns"],float)
+        matrix.append(r)
+    min_n=min(len(x) for x in matrix); matrix=np.asarray([x[-min_n:] for x in matrix])
+    idx=np.array_split(np.arange(min_n),blocks); logits=[]
+    def sr(x):
+        x=np.asarray(x,float); s=x.std(ddof=1)
+        return float(x.mean()/s) if len(x)>1 and s>0 else 0.0
     for train_blocks in itertools.combinations(range(blocks),blocks//2):
-        if 0 not in train_blocks: continue # symmetric unique complements
-        tr=np.concatenate([idx[i] for i in train_blocks]); te=np.concatenate([idx[i] for i in range(blocks) if i not in train_blocks])
-        train_scores=[]; test_scores=[]
-        for c in cs:
-            a=simulate(pre_oos.iloc[tr].sort_index(),c); b=simulate(pre_oos.iloc[te].sort_index(),c)
-            train_scores.append(a["sharpe"]); test_scores.append(b["sharpe"])
-        winner=int(np.argmax(train_scores)); rank=(np.argsort(np.argsort(test_scores))[winner]+1)/(len(cs)+1)
+        if 0 not in train_blocks: continue
+        test_blocks=[i for i in range(blocks) if i not in train_blocks]
+        tr=np.concatenate([idx[i] for i in train_blocks]); te=np.concatenate([idx[i] for i in test_blocks])
+        train_scores=[sr(x[tr]) for x in matrix]; test_scores=[sr(x[te]) for x in matrix]
+        winner=int(np.argmax(train_scores))
+        rank=(np.argsort(np.argsort(test_scores))[winner]+1)/(len(cs)+1)
         logits.append(math.log(rank/(1-rank)))
     return float(np.mean(np.asarray(logits)<=0)) if logits else 1.0
 
