@@ -1,0 +1,53 @@
+name: iqros-gen2-prospective-holdout
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '35 2 * * *'
+permissions:
+  contents: read
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Enforce preregistration boundary
+        run: |
+          python - <<'PY'
+          import json, datetime as dt
+          p=json.load(open('research/gen2/iqros-atvf-gen2-preregistration.json'))
+          assert p['status']=='PREREGISTERED_NOT_STARTED'
+          assert p['temporal_design']['prospective_holdout_start']=='2026-10-01T00:00:00Z'
+          assert p['governance']['real_money_authorized'] is False
+          assert p['trial_budget']['maximum_total_trials']==48
+          now=dt.datetime.now(dt.timezone.utc)
+          if now < dt.datetime(2026,10,1,tzinfo=dt.timezone.utc):
+              print('HOLDOUT_NOT_OPEN: no holdout data will be evaluated.')
+          PY
+      - name: Record collection policy
+        run: |
+          mkdir -p evidence/gen2
+          python - <<'PY'
+          import json, datetime as dt, hashlib
+          p=json.load(open('research/gen2/iqros-atvf-gen2-preregistration.json'))
+          now=dt.datetime.now(dt.timezone.utc)
+          state={
+            'experiment_id':p['experiment_id'],
+            'checked_at':now.isoformat(),
+            'holdout_start':p['temporal_design']['prospective_holdout_start'],
+            'minimum_days':p['temporal_design']['prospective_holdout_minimum_days'],
+            'evaluation_permitted': now >= dt.datetime(2026,10,1,tzinfo=dt.timezone.utc),
+            'parameter_changes_after_first_ingest':'PROHIBITED',
+            'real_money_authorized':False
+          }
+          raw=json.dumps(state,sort_keys=True,separators=(',',':')).encode()
+          state['state_sha256']=hashlib.sha256(raw).hexdigest()
+          open('evidence/gen2/collection-state.json','w').write(json.dumps(state,indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iqros-gen2-collection-state
+          path: evidence/gen2/collection-state.json
+          retention-days: 90
