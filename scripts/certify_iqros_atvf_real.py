@@ -106,8 +106,8 @@ def simulate(d,cfg,cost_bps=10,start_score=0):
 
 def configs():
     base=Config()
-    for s,m,l,v,stopdummy in itertools.product([30,40],[90,120],[300,360],[.10,.15],[0,1]):
-        if s<m<l: yield replace(base,short=s,medium=m,long=l,target_vol=v)
+    for s,m,l,v,hvm in itertools.product([30,40],[90,120],[300,360],[.10,.15],[.25,.35]):
+        if s<m<l: yield replace(base,short=s,medium=m,long=l,target_vol=v,high_vol_mult=hvm)
 
 def public(r):
     return {k:v for k,v in r.items() if k not in {"returns","trade_pnls"}}
