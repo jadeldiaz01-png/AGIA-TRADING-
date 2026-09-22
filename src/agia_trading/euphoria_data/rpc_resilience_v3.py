@@ -4,6 +4,7 @@ import hashlib
 import json
 import threading
 import time
+import urllib.error
 
 from .historical_provider import HistoricalLogProvider, provenance_record
 from .rpc_resilience_v2 import adaptive_get_logs as v2_get_logs
@@ -143,7 +144,7 @@ def collect_with_explicit_fallback(
                 "fallback_used": index > 0,
                 "prior_provider_errors": errors,
             }
-        except Exception as exc:
+        except (RuntimeError, urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
             errors.append(
                 {
                     "provider": provider.capability_manifest(),
