@@ -13,7 +13,7 @@ from .historical_lifecycle import (
     build_structural_index,
 )
 from .historical_provider import HistoricalLogProvider
-from .rpc_resilience_v2 import adaptive_get_logs
+from .rpc_resilience_v3 import TokenBucket, collect_with_explicit_fallback
 
 
 def _canonical_bytes(value: object) -> bytes:
@@ -33,12 +33,12 @@ def scan_shard(
     if from_block > to_block:
         raise ValueError("from_block must be <= to_block")
     provider = HistoricalLogProvider("blockscout-standard", logs_endpoint, "STANDARD_ONLY")
-    logs_rpc = provider.client()
-    logs, windows = adaptive_get_logs(
-        logs_rpc,
+    logs, windows, provider_selection = collect_with_explicit_fallback(
+        [provider],
         [INFLOW_EVENT, OUTFLOW_EVENT],
         from_block,
         to_block,
+        limiter=TokenBucket(rate_per_second=0.5, capacity=1),
     )
     payload = {
         "shard_index": index,
@@ -46,6 +46,7 @@ def scan_shard(
         "to_block": to_block,
         "historical_log_index": logs_endpoint,
         "provider_manifest": provider.capability_manifest(),
+        "provider_selection": provider_selection,
         "logs": logs,
         "log_count": len(logs),
         "windows": windows,
