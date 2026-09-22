@@ -3,7 +3,6 @@ import urllib.error
 
 import pytest
 
-from agia_trading.euphoria_data import historical_shards
 from agia_trading.euphoria_data import rpc_resilience_v2 as r
 
 
@@ -37,26 +36,15 @@ def _http_429():
     )
 
 
-def test_scan_shard_is_wired_to_rpc_resilience_v2(monkeypatch):
-    seen = {}
-
-    class ScannerRpc(FakeRpc):
-        def __init__(self, endpoint, user_agent=None):
-            super().__init__(lambda method, params: [])
-            self.endpoint = endpoint
-
-    def fake_v2(rpc, topics, start, end):
-        seen.update(endpoint=rpc.endpoint, topics=topics, start=start, end=end)
-        return [], [{"collector_version": r.COLLECTOR_VERSION}]
-
-    monkeypatch.setattr(historical_shards, "RpcClient", ScannerRpc)
-    monkeypatch.setattr(historical_shards, "adaptive_get_logs", fake_v2)
-
-    payload = historical_shards.scan_shard(3, 100, 200, "https://example.invalid/rpc")
-
-    assert seen["start"] == 100
-    assert seen["end"] == 200
-    assert payload["windows"][0]["collector_version"] == "rpc-resilience-v2"
+def test_v2_remains_standard_only_reference_collector(monkeypatch):
+    monkeypatch.setattr(r.time, "sleep", lambda _: None)
+    rpc = FakeRpc(lambda method, params: [])
+    logs, windows = r.adaptive_get_logs(
+        rpc, ["0x01"], 100, 109, initial_window=10
+    )
+    assert logs == []
+    assert windows[0]["collector_version"] == "rpc-resilience-v2"
+    assert rpc.calls[0][0] == "eth_getLogs"
 
 
 def test_rpc_resilience_v2_preserves_log_semantics(monkeypatch):
