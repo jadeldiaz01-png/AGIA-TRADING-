@@ -1,7 +1,7 @@
 import pytest
 
-from agia_trading.euphoria_data.historical_provider import HistoricalLogProvider
 from agia_trading.euphoria_data import rpc_resilience_v3 as v3
+from agia_trading.euphoria_data.historical_provider import HistoricalLogProvider
 
 
 def _log(block):
