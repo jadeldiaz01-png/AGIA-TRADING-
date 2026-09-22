@@ -10,10 +10,10 @@ from .historical_lifecycle import (
     DEFAULT_FROM_BLOCK,
     INFLOW_EVENT,
     OUTFLOW_EVENT,
-    adaptive_get_logs,
     build_structural_index,
 )
-from .rpc import RpcClient
+from .historical_provider import HistoricalLogProvider
+from .rpc_resilience_v3 import TokenBucket, collect_with_explicit_fallback
 
 
 def _canonical_bytes(value: object) -> bytes:
@@ -32,19 +32,21 @@ def scan_shard(
 ) -> dict:
     if from_block > to_block:
         raise ValueError("from_block must be <= to_block")
-    logs_rpc = RpcClient(logs_endpoint, user_agent="AGIA-TRADING-HISTORICAL-SHARD/1.0 read-only")
-    logs_rpc.verify_chain_id(4326)
-    logs, windows = adaptive_get_logs(
-        logs_rpc,
+    provider = HistoricalLogProvider("blockscout-standard", logs_endpoint, "STANDARD_ONLY")
+    logs, windows, provider_selection = collect_with_explicit_fallback(
+        [provider],
         [INFLOW_EVENT, OUTFLOW_EVENT],
         from_block,
         to_block,
+        limiter=TokenBucket(rate_per_second=0.5, capacity=1),
     )
     payload = {
         "shard_index": index,
         "from_block": from_block,
         "to_block": to_block,
         "historical_log_index": logs_endpoint,
+        "provider_manifest": provider.capability_manifest(),
+        "provider_selection": provider_selection,
         "logs": logs,
         "log_count": len(logs),
         "windows": windows,
@@ -143,6 +145,9 @@ def aggregate_shards(
         raise RuntimeError(f"historical shard coverage invalid: {coverage_errors}")
 
     sources = {item["historical_log_index"] for item in shards}
+    provider_manifests = {json.dumps(item.get("provider_manifest"), sort_keys=True) for item in shards}
+    if len(provider_manifests) != 1:
+        raise RuntimeError("mixed historical providers/capabilities are not allowed without explicit reconciliation")
     if len(sources) != 1:
         raise RuntimeError(f"mixed historical index sources are not allowed: {sorted(sources)}")
 
@@ -230,6 +235,7 @@ def aggregate_shards(
         "range": {"from_block": expected_from, "to_block": expected_to},
         "sources": {
             "historical_log_index": next(iter(sources)),
+            "provider_manifest": json.loads(next(iter(provider_manifests))),
             "historical_log_index_role": "discovery/index only",
             "economic_authoritative_rpc": "https://mainnet.megaeth.com/rpc",
             "economic_authoritative_rpc_role": "reserved for the separate 100% economic enrichment gate",
