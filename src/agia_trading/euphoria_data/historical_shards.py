@@ -10,10 +10,10 @@ from .historical_lifecycle import (
     DEFAULT_FROM_BLOCK,
     INFLOW_EVENT,
     OUTFLOW_EVENT,
-    adaptive_get_logs,
     build_structural_index,
 )
-from .rpc import RpcClient\nfrom .rpc_resilience_v2 import adaptive_get_logs
+from .rpc import RpcClient
+from .rpc_resilience_v2 import adaptive_get_logs
 
 
 def _canonical_bytes(value: object) -> bytes:
