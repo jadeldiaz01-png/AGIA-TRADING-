@@ -28,6 +28,13 @@ def _write_shard(path: Path, index: int, start: int, end: int, logs: list[dict])
         "from_block": start,
         "to_block": end,
         "historical_log_index": "https://megaeth.blockscout.com/api/eth-rpc",
+        "provider_manifest": {
+            "provider_id": "blockscout-standard",
+            "endpoint_hash": "fixture-endpoint-sha256",
+            "chain_id": 4326,
+            "capability": "STANDARD_ONLY",
+            "effective_method": "eth_getLogs",
+        },
         "logs": logs,
         "log_count": len(logs),
         "windows": [],
@@ -89,3 +96,22 @@ def test_aggregate_rejects_gap_before_any_economic_work(tmp_path: Path) -> None:
         assert "coverage invalid" in str(exc)
     else:
         raise AssertionError("coverage gap must fail closed")
+
+
+def test_aggregate_rejects_silent_provider_mixing(tmp_path: Path) -> None:
+    _write_shard(tmp_path / "shard-0.json", 0, 10, 19, [])
+    _write_shard(tmp_path / "shard-1.json", 1, 20, 29, [])
+    path = tmp_path / "shard-1.json"
+    payload = json.loads(path.read_text())
+    payload["provider_manifest"]["provider_id"] = "unexpected-fallback"
+    payload["payload_sha256"] = _digest(
+        {key: value for key, value in payload.items() if key != "payload_sha256"}
+    )
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    try:
+        aggregate_shards(sorted(tmp_path.glob("shard-*.json")), 10, 29)
+    except RuntimeError as exc:
+        assert "mixed historical providers/capabilities" in str(exc)
+    else:
+        raise AssertionError("silent provider mixing must fail closed")
